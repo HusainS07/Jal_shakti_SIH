@@ -1,0 +1,4 @@
+bcrypt
+jsonwebtoken
+mongoose
+lucide-react
