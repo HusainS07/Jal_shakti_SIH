@@ -1,16 +1,44 @@
-"use client";
+"use client"; 
+
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { Droplets, LogIn, UserPlus, TrendingDown, Calendar, Waves } from "lucide-react";
 
 export default function HomePage() {
   const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState("");
   const resultRef = useRef(null);
+  
+  // Cache for memoized results with timestamp
+  const cacheRef = useRef({});
+  const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
   const callApi = async (endpoint) => {
+    const now = Date.now();
+    const cached = cacheRef.current[endpoint];
+    
+    // Check if we have a valid cached result
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+      setResult(cached.data);
+      
+      // Scroll to result if needed
+      setTimeout(() => {
+        if (resultRef.current) {
+          const resultPosition = resultRef.current.getBoundingClientRect().top + window.scrollY;
+          const currentScroll = window.scrollY;
+          if (resultPosition > currentScroll + window.innerHeight - 200) {
+            resultRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }
+      }, 100);
+      
+      return;
+    }
+
+    // No valid cache, make API call
     setIsLoading(endpoint);
     setResult("");
-    
+
     try {
       const res = await fetch(`/api/${endpoint}`, {
         method: "POST",
@@ -22,7 +50,15 @@ export default function HomePage() {
       });
 
       const data = await res.json();
-      setResult(data.message || "No message received");
+      const message = data.message || "No message received";
+      
+      // Store in cache
+      cacheRef.current[endpoint] = {
+        data: message,
+        timestamp: now
+      };
+      
+      setResult(message);
     } catch (error) {
       console.error("Error:", error);
       setResult("Failed to fetch prediction");
@@ -35,15 +71,22 @@ export default function HomePage() {
     if (result && resultRef.current) {
       const resultPosition = resultRef.current.getBoundingClientRect().top + window.scrollY;
       const currentScroll = window.scrollY;
-      
-      // Only scroll if the result is below the current view
+
       if (resultPosition > currentScroll + window.innerHeight - 200) {
         setTimeout(() => {
-          resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          resultRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 100);
       }
     }
   }, [result]);
+
+  // Helper to check if result is from cache
+  const isCached = (endpoint) => {
+    const cached = cacheRef.current[endpoint];
+    if (!cached) return false;
+    const now = Date.now();
+    return (now - cached.timestamp) < CACHE_DURATION;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 flex flex-col">
@@ -113,7 +156,7 @@ export default function HomePage() {
               disabled={isLoading === "extraction_limit"}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:from-purple-600 hover:to-pink-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading === "extraction_limit" ? "Processing..." : "Get Prediction"}
+              {isLoading === "extraction_limit" ? "Processing..." : isCached("extraction_limit") ? "Get Prediction (Cached)" : "Get Prediction"}
             </button>
           </div>
 
@@ -128,8 +171,23 @@ export default function HomePage() {
               disabled={isLoading === "future_condition"}
               className="w-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-semibold py-3 rounded-xl hover:from-indigo-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading === "future_condition" ? "Processing..." : "Get Forecast"}
+              {isLoading === "future_condition" ? "Processing..." : isCached("future_condition") ? "Get Forecast (Cached)" : "Get Forecast"}
             </button>
+          </div>
+
+          {/* Stations card */}
+          <div className="bg-white/80 backdrop-blur-lg p-8 rounded-3xl shadow-xl border border-white/20 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl mb-4">
+              <Droplets className="w-7 h-7 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Stations</h3>
+            <p className="text-gray-600 mb-6 text-sm">View nearby stations and available parking slots</p>
+            <Link
+              href="/stations"
+              className="w-full block bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold py-3 rounded-xl text-center hover:from-emerald-600 hover:to-teal-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg"
+            >
+              Go to Stations
+            </Link>
           </div>
         </div>
 
@@ -149,12 +207,8 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="relative text-center py-6 mt-12">
-        <p className="text-gray-500 text-sm">
-          &copy; 2025 JalShakti. All rights reserved.
-        </p>
-        <p className="text-gray-400 text-xs mt-1">
-          Powered by AI for a sustainable future
-        </p>
+        <p className="text-gray-500 text-sm">&copy; 2025 JalShakti. All rights reserved.</p>
+        <p className="text-gray-400 text-xs mt-1">Powered by AI for a sustainable future</p>
       </footer>
     </div>
   );
