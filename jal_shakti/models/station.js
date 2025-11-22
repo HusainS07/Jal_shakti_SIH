@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const StationSchema = new mongoose.Schema({
+const stationSchema = new mongoose.Schema({
   serialNo: { type: Number, unique: true, required: true },
   station_id: { type: String, required: true },
 
@@ -11,7 +11,7 @@ const StationSchema = new mongoose.Schema({
       default: "Point",
     },
     coordinates: {
-      type: [Number], // [longitude, latitude]
+      type: [Number],
       required: true,
     },
   },
@@ -24,9 +24,7 @@ const StationSchema = new mongoose.Schema({
   },
 
   aquifer: {
-    type: {
-      type: String, required: true, // e.g. ALLUVIAL_AQUIFER
-    },
+    type: { type: String, required: true },
     weathered_zone_depth_m: Number,
     fractured_zone_depth_m: Number,
     storativity: Number,
@@ -56,10 +54,12 @@ const StationSchema = new mongoose.Schema({
       nov: Number,
     },
   },
+}, {
+  collection: 'stations'  // ✅ CHANGED: plural, not singular
 });
 
+stationSchema.index({ location: "2dsphere" });
 
-StationSchema.index({ location: "2dsphere" });
+const Station = mongoose.models.Station || mongoose.model("Station", stationSchema);
 
-export default mongoose.models.Station ||
-  mongoose.model("Station", StationSchema);
+export default Station;

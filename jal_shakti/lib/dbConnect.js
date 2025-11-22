@@ -19,7 +19,11 @@ export async function dbConnect() {
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
       bufferCommands: false,
-    }).then((mongoose) => mongoose);
+      dbName: 'Jal_Shakti',  //  Force database name
+    }).then((mongoose) => {
+      console.log('✅ Connected to MongoDB Atlas - Database: Jal_Shakti');
+      return mongoose;
+    });
   }
 
   cached.conn = await cached.promise;
