@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
+import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 
 export async function GET(request, { params }) {
   try {
@@ -25,94 +26,47 @@ export async function GET(request, { params }) {
       );
     }
 
-    if (lon < -180 || lon > 180 || lat < -90 || lat > 90) {
-      return NextResponse.json(
-        { success: false, error: "Coordinates out of valid range" },
-        { status: 400 }
-      );
-    }
-
-    console.log("=== SEARCH INFO ===");
-    console.log(`Searching near: [${lon}, ${lat}]`);
-    console.log(`Max distance: 500 km`);
-
-    // First, check if we can find ANY stations at all
-    const totalCount = await Station.countDocuments({ station_id: { $exists: true } });
-    console.log(`Total groundwater stations in DB: ${totalCount}`);
-
-    // Try WITHOUT distance limit first
-    const anyStations = await Station.aggregate([
-      {
-        $geoNear: {
-          near: { type: "Point", coordinates: [lon, lat] },
-          distanceField: "distance_meters",
-          spherical: true,
-          query: { station_id: { $exists: true } }
-          // NO maxDistance - find ANY station
-        }
-      },
-      { $limit: 1 },
-      {
-        $project: {
-          station_id: 1,
-          distance_meters: 1,
-          distance_km: { $round: [{ $divide: ["$distance_meters", 1000] }, 2] }
-        }
-      }
-    ]);
-
-    console.log("Nearest station (no distance limit):", anyStations[0]);
-
-    // Now try with 500km limit
     const nearestStations = await Station.aggregate([
       {
         $geoNear: {
           near: { type: "Point", coordinates: [lon, lat] },
           distanceField: "distance_meters",
           spherical: true,
-          maxDistance: 500000,  // 500 km
+          maxDistance: 500000,
           query: { station_id: { $exists: true } }
         }
       },
-      { $limit: 5 },
-      {
-        $project: {
-          _id: 1,
-          station_id: 1,
-          village: "$address.village",
-          district: "$address.district",
-          state: "$address.state",
-          aquifer_type: "$aquifer.type",
-          distance_meters: 1,
-          distance_km: { $round: [{ $divide: ["$distance_meters", 1000] }, 2] }
-        }
-      }
+      { $limit: 5 }
     ]);
-
-    console.log(`Found ${nearestStations.length} stations within 500km`);
-    console.log("==================");
 
     if (!nearestStations || nearestStations.length === 0) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: "No groundwater monitoring stations found within 500 km radius",
-          searchLocation: { longitude: lon, latitude: lat },
-          totalStationsInDB: totalCount,
-          nearestStation: anyStations[0] || null,
-          suggestion: anyStations[0] 
-            ? `Nearest station is ${anyStations[0].distance_km} km away. Try increasing search radius.`
-            : "No stations found in database"
-        },
+        { success: false, message: "No stations found within 500 km radius" },
         { status: 404 }
       );
     }
 
+    // Add water status analysis to each station
+    const stationsWithStatus = nearestStations.map(station => {
+      const waterStatus = analyzeWaterStatus(station);
+      
+      return {
+        _id: station._id,
+        station_id: station.station_id,
+        village: station.address?.village,
+        district: station.address?.district,
+        state: station.address?.state,
+        aquifer_type: station.aquifer?.type,
+        distance_km: Math.round((station.distance_meters / 1000) * 100) / 100,
+        waterStatus: waterStatus
+      };
+    });
+
     return NextResponse.json({ 
       success: true, 
-      count: nearestStations.length,
+      count: stationsWithStatus.length,
       searchLocation: { longitude: lon, latitude: lat },
-      stations: nearestStations
+      stations: stationsWithStatus
     });
 
   } catch (error) {
