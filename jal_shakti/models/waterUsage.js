@@ -1,3 +1,5 @@
+// jal_shakti/models/waterUsage.js
+
 import mongoose from "mongoose";
 
 const waterUsageSchema = new mongoose.Schema({

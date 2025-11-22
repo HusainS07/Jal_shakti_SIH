@@ -1,3 +1,4 @@
+// jal_shakti/models/waterQuality.js
 import mongoose from "mongoose";
 
 const waterQualitySchema = new mongoose.Schema({
