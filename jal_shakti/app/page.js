@@ -1,14 +1,21 @@
-"use client"; 
+"use client";
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Droplets, LogIn, UserPlus, TrendingDown, Calendar, Waves } from "lucide-react";
+import {
+  Droplets,
+  LogIn,
+  UserPlus,
+  TrendingDown,
+  Calendar,
+  Waves,
+} from "lucide-react";
 
 export default function HomePage() {
   const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState("");
   const resultRef = useRef(null);
-  
+
   // Cache for memoized results with timestamp
   const cacheRef = useRef({});
   const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
@@ -16,22 +23,26 @@ export default function HomePage() {
   const callApi = async (endpoint) => {
     const now = Date.now();
     const cached = cacheRef.current[endpoint];
-    
+
     // Check if we have a valid cached result
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+    if (cached && now - cached.timestamp < CACHE_DURATION) {
       setResult(cached.data);
-      
+
       // Scroll to result if needed
       setTimeout(() => {
         if (resultRef.current) {
-          const resultPosition = resultRef.current.getBoundingClientRect().top + window.scrollY;
+          const resultPosition =
+            resultRef.current.getBoundingClientRect().top + window.scrollY;
           const currentScroll = window.scrollY;
           if (resultPosition > currentScroll + window.innerHeight - 200) {
-            resultRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+            resultRef.current.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
           }
         }
       }, 100);
-      
+
       return;
     }
 
@@ -51,13 +62,13 @@ export default function HomePage() {
 
       const data = await res.json();
       const message = data.message || "No message received";
-      
+
       // Store in cache
       cacheRef.current[endpoint] = {
         data: message,
-        timestamp: now
+        timestamp: now,
       };
-      
+
       setResult(message);
     } catch (error) {
       console.error("Error:", error);
@@ -69,12 +80,16 @@ export default function HomePage() {
 
   useEffect(() => {
     if (result && resultRef.current) {
-      const resultPosition = resultRef.current.getBoundingClientRect().top + window.scrollY;
+      const resultPosition =
+        resultRef.current.getBoundingClientRect().top + window.scrollY;
       const currentScroll = window.scrollY;
 
       if (resultPosition > currentScroll + window.innerHeight - 200) {
         setTimeout(() => {
-          resultRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+          resultRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
         }, 100);
       }
     }
@@ -85,7 +100,7 @@ export default function HomePage() {
     const cached = cacheRef.current[endpoint];
     if (!cached) return false;
     const now = Date.now();
-    return (now - cached.timestamp) < CACHE_DURATION;
+    return now - cached.timestamp < CACHE_DURATION;
   };
 
   return (
@@ -107,9 +122,12 @@ export default function HomePage() {
           <h1 className="text-5xl md:text-6xl font-bold text-gray-800 mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
             JalShakti
           </h1>
-          <p className="text-xl text-gray-600 mb-2">Smart Water Management Platform</p>
+          <p className="text-xl text-gray-600 mb-2">
+            Smart Water Management Platform
+          </p>
           <p className="text-gray-500 max-w-2xl mx-auto">
-            Empowering communities with AI-driven insights for sustainable water resource management
+            Empowering communities with AI-driven insights for sustainable water
+            resource management
           </p>
         </div>
 
@@ -121,7 +139,9 @@ export default function HomePage() {
               <LogIn className="w-7 h-7 text-white" />
             </div>
             <h3 className="text-2xl font-bold text-gray-800 mb-2">Sign In</h3>
-            <p className="text-gray-600 mb-6">Access your dashboard and water analytics</p>
+            <p className="text-gray-600 mb-6">
+              Access your dashboard and water analytics
+            </p>
             <a
               href="/login"
               className="block w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold py-3 rounded-xl text-center hover:from-blue-600 hover:to-cyan-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg"
@@ -135,7 +155,9 @@ export default function HomePage() {
               <UserPlus className="w-7 h-7 text-white" />
             </div>
             <h3 className="text-2xl font-bold text-gray-800 mb-2">New Here?</h3>
-            <p className="text-gray-600 mb-6">Create an account and start monitoring</p>
+            <p className="text-gray-600 mb-6">
+              Create an account and start monitoring
+            </p>
             <a
               href="/signup"
               className="block w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold py-3 rounded-xl text-center hover:from-emerald-600 hover:to-teal-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg"
@@ -149,14 +171,22 @@ export default function HomePage() {
             <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl mb-4">
               <TrendingDown className="w-7 h-7 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">Extraction Limit</h3>
-            <p className="text-gray-600 mb-6 text-sm">Calculate safe water extraction limits based on current conditions</p>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Extraction Limit
+            </h3>
+            <p className="text-gray-600 mb-6 text-sm">
+              Calculate safe water extraction limits based on current conditions
+            </p>
             <button
               onClick={() => callApi("extraction_limit")}
               disabled={isLoading === "extraction_limit"}
               className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:from-purple-600 hover:to-pink-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading === "extraction_limit" ? "Processing..." : isCached("extraction_limit") ? "Get Prediction (Cached)" : "Get Prediction"}
+              {isLoading === "extraction_limit"
+                ? "Processing..."
+                : isCached("extraction_limit")
+                ? "Get Prediction (Cached)"
+                : "Get Prediction"}
             </button>
           </div>
 
@@ -164,14 +194,22 @@ export default function HomePage() {
             <div className="flex items-center justify-center w-14 h-14 bg-gradient-to-br from-indigo-500 to-blue-500 rounded-2xl mb-4">
               <Calendar className="w-7 h-7 text-white" />
             </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">Future Outlook</h3>
-            <p className="text-gray-600 mb-6 text-sm">Forecast water conditions for the next 3-4 months</p>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              Future Outlook
+            </h3>
+            <p className="text-gray-600 mb-6 text-sm">
+              Forecast water conditions for the next 3-4 months
+            </p>
             <button
               onClick={() => callApi("future_condition")}
               disabled={isLoading === "future_condition"}
               className="w-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-semibold py-3 rounded-xl hover:from-indigo-600 hover:to-blue-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading === "future_condition" ? "Processing..." : isCached("future_condition") ? "Get Forecast (Cached)" : "Get Forecast"}
+              {isLoading === "future_condition"
+                ? "Processing..."
+                : isCached("future_condition")
+                ? "Get Forecast (Cached)"
+                : "Get Forecast"}
             </button>
           </div>
 
@@ -181,7 +219,9 @@ export default function HomePage() {
               <Droplets className="w-7 h-7 text-white" />
             </div>
             <h3 className="text-xl font-bold text-gray-800 mb-2">Stations</h3>
-            <p className="text-gray-600 mb-6 text-sm">View nearby stations and available parking slots</p>
+            <p className="text-gray-600 mb-6 text-sm">
+              View nearby stations and available parking slots
+            </p>
             <Link
               href="/stations"
               className="w-full block bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold py-3 rounded-xl text-center hover:from-emerald-600 hover:to-teal-600 transform hover:scale-[1.02] transition-all duration-200 shadow-lg"
@@ -189,15 +229,29 @@ export default function HomePage() {
               Go to Stations
             </Link>
           </div>
+
+          <div className="text-center mt-10">
+            <Link
+              href="/analytics"
+              className="inline-block px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl shadow-xl hover:shadow-2xl transition-all"
+            >
+              View 2024 Forecast & Analytics
+            </Link>
+          </div>
         </div>
 
         {/* Result display */}
         {result && (
-          <div ref={resultRef} className="w-full max-w-4xl bg-white/90 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-white/20 animate-in fade-in duration-500">
+          <div
+            ref={resultRef}
+            className="w-full max-w-4xl bg-white/90 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-white/20 animate-in fade-in duration-500"
+          >
             <div className="flex items-start gap-3">
               <Waves className="w-6 h-6 text-blue-500 flex-shrink-0 mt-1" />
               <div>
-                <h4 className="font-semibold text-gray-800 mb-1">Prediction Result</h4>
+                <h4 className="font-semibold text-gray-800 mb-1">
+                  Prediction Result
+                </h4>
                 <p className="text-gray-700">{result}</p>
               </div>
             </div>
@@ -207,8 +261,12 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="relative text-center py-6 mt-12">
-        <p className="text-gray-500 text-sm">&copy; 2025 JalShakti. All rights reserved.</p>
-        <p className="text-gray-400 text-xs mt-1">Powered by AI for a sustainable future</p>
+        <p className="text-gray-500 text-sm">
+          &copy; 2025 JalShakti. All rights reserved.
+        </p>
+        <p className="text-gray-400 text-xs mt-1">
+          Powered by AI for a sustainable future
+        </p>
       </footer>
     </div>
   );
