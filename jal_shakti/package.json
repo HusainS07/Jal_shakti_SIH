@@ -2,6 +2,14 @@
   "name": "jal_shakti",
   "version": "0.1.0",
   "private": true,
+  "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +17,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "bcrypt": "^6.0.0",
+    "groq-sdk": "^0.36.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.553.0",
     "mongoose": "^8.19.3",

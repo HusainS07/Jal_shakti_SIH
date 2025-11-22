@@ -2,42 +2,39 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
 
-// IMPORTANT: This is the correct syntax for Next.js 15+
 export async function GET(request, { params }) {
   try {
     await dbConnect();
 
-    // Await params - this is the key change
-    const resolvedParams = await params;
-    const { locations } = resolvedParams;
+    const { longitude, latitude } = params;
 
-    if (!locations || locations.length < 2) {
+    if (!longitude || !latitude) {
       return NextResponse.json(
-        { error: "Please provide longitude and latitude" },
+        { error: "Please provide longitude and latitude in URL" },
         { status: 400 }
       );
     }
 
-    const longitude = parseFloat(locations[0]);
-    const latitude = parseFloat(locations[1]);
+    const lon = parseFloat(longitude);
+    const lat = parseFloat(latitude);
 
-    if (isNaN(longitude) || isNaN(latitude)) {
+    if (isNaN(lon) || isNaN(lat)) {
       return NextResponse.json(
         { error: "Invalid coordinates provided" },
         { status: 400 }
       );
     }
 
-    // Fetch stations sorted by nearest first
     const stations = await Station.find({
       location: {
         $near: {
-          $geometry: { type: "Point", coordinates: [longitude, latitude] },
+          $geometry: { type: "Point", coordinates: [lon, lat] },
+          $maxDistance: 20000, // 🚀 20km radius (adjustable)
         },
       },
     }).limit(10);
 
-    return NextResponse.json({ stations });
+    return NextResponse.json({ success: true, stations });
   } catch (error) {
     console.error("Fetch stations error:", error);
     return NextResponse.json(
