@@ -1,4 +1,5 @@
 // app/api/ai/[station_id]/route.js
+///api/ai/RJ_TONK_MALPURA_001
 
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
@@ -138,8 +139,8 @@ Use this exact structure:
       }
     ],
     model: "llama-3.3-70b-versatile",
-    temperature: 0.5, // Lower for more consistent JSON formatting
-    max_tokens: 2048, // Increased for detailed responses
+    temperature: 0.5, 
+    max_tokens: 2048, 
     top_p: 0.9,
   });
 

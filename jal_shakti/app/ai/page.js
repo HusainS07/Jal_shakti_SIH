@@ -1,4 +1,4 @@
-// app/ai-recommendations/page.js
+// app/ai/page.js
 "use client";
 
 import { useState } from 'react';
