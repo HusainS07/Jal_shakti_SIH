@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MapPin, TrendingUp, Droplets } from "lucide-react";
+import { MapPin, Droplets, CloudRain } from "lucide-react";
 import Link from "next/link";
 
 export default function AnalyticsPage() {
@@ -15,14 +15,12 @@ export default function AnalyticsPage() {
       const lng = 73.1167;
       const lat = 19.0333;
 
-      // 1. Get full analytics data
       const res = await fetch(`/api/analytics/nearest?lon=${lng}&lat=${lat}`);
       const json = await res.json();
 
       if (json.success) {
         setData(json.station);
 
-        // 2. Call future_condition with full payload
         const payload = {
           weathered_zone_depth: json.station.weathered_zone_depth,
           fractured_zone_depth: json.station.fractured_zone_depth,
@@ -60,13 +58,13 @@ export default function AnalyticsPage() {
       <div className="min-h-screen bg-gradient-to-br from-teal-50 to-cyan-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-teal-600 mb-6"></div>
-          <p className="text-2xl text-gray-700">Analyzing groundwater data...</p>
+          <p className="text-2xl text-gray-700">Loading groundwater & rainfall data...</p>
         </div>
       </div>
     );
   }
 
-  if (!data) return <div>No data found</div>;
+  if (!data) return <div className="text-center text-3xl py-20">No station found nearby</div>;
 
   const s = data;
   const predAprMay = prediction?.apr_may || 9.8;
@@ -74,13 +72,19 @@ export default function AnalyticsPage() {
   const predColor = predAprMay <= 30 ? "bg-green-500" : predAprMay <= 45 ? "bg-yellow-500" : "bg-red-600";
   const predShort = predAprMay <= 30 ? "S" : predAprMay <= 45 ? "A" : "C";
 
+  // Format rainfall data for display
+  const rainfall = s.rainfall_forecast || [];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-purple-50 p-8">
       <div className="max-w-7xl mx-auto">
 
         <div className="text-center mb-12">
           <h1 className="text-6xl font-bold text-gray-800 mb-4">Groundwater Analytics</h1>
-          <p className="text-2xl text-gray-600">MH_RAIGAD_PANVEL_001 • Chinchpara, Raigad</p>
+          <p className="text-2xl text-gray-600">
+            {s.station_id} • {s.village}, {s.district}
+          </p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-12">
@@ -115,18 +119,53 @@ export default function AnalyticsPage() {
             <div className={`w-64 h-64 ${predColor} rounded-full mx-auto flex items-center justify-center text-white text-11xl font-black shadow-2xl mb-10`}>
               {predShort}
             </div>
-            <p className="text-11xl font-black text-purple-700 mb-6">{predAprMay} m</p>
+            <p className="text-11xl font-black text-purple-700 mb-6">{predAprMay.toFixed(1)} m</p>
             <p className="text-4xl font-bold text-purple-800 mb-12">Apr–May 2024 • {predStatus}</p>
 
             <div className="grid grid-cols-4 gap-6">
               {["jan", "apr_may", "aug", "nov"].map(k => (
                 <div key={k} className={`p-8 rounded-3xl ${k === "apr_may" ? "bg-purple-800 text-white" : "bg-white"} shadow-xl`}>
                   <p className="text-lg font-medium">{k === "apr_may" ? "Apr–May" : k.toUpperCase()}</p>
-                  <p className="text-5xl font-black mt-3">{prediction?.[k] || "?"} m</p>
+                  <p className="text-5xl font-black mt-3">{prediction?.[k]?.toFixed(1) || "?"} m</p>
                 </div>
               ))}
             </div>
           </div>
+        </div>
+
+        {/* NEW: Rainfall Forecast Section */}
+        <div className="mt-16 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-3xl shadow-2xl p-10 text-white">
+          <h2 className="text-4xl font-bold text-center mb-8 flex items-center justify-center gap-4">
+            <CloudRain className="w-12 h-12" />
+            12-Month Rainfall Forecast (SEAS5 Model)
+          </h2>
+
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-4">
+            {rainfall.map((item, idx) => {
+              const monthName = months[idx];
+              const value = item.precipitation_mm;
+              const barHeight = value ? Math.max((value / 300) * 160, 20) : 20; // scale max ~300mm
+
+              return (
+                <div key={idx} className="text-center">
+                  <div className="text-lg font-semibold mb-2">{monthName}</div>
+                  <div className="relative bg-white bg-opacity-20 rounded-full h-40 flex items-end justify-center pb-3">
+                    <div
+                      className="w-10 bg-white rounded-t-full transition-all duration-500"
+                      style={{ height: `${barHeight}px` }}
+                    />
+                  </div>
+                  <div className="mt-3 text-2xl font-bold">
+                    {value ? `${value.toFixed(0)} mm` : "—"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-center mt-8 text-lg opacity-90">
+            Source: ECMWF SEAS5 Seasonal Forecast • Updated monthly
+          </p>
         </div>
 
         {/* Detailed Parameters */}

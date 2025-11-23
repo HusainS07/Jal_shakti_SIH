@@ -13,7 +13,7 @@ export async function POST(req) {
   try {
     await dbConnect();
 
-    const { email, password } = await req.json();
+    const { email, password, role } = await req.json();
 
     if (!email || !password)
       return NextResponse.json(
@@ -33,18 +33,29 @@ export async function POST(req) {
         { status: 400 }
       );
 
+    // Validate role
+    if (!role || !["user", "town_planner"].includes(role))
+      return NextResponse.json(
+        { error: "Role must be either 'user' or 'town_planner'" },
+        { status: 400 }
+      );
+
     const existingUser = await User.findOne({ email });
     if (existingUser)
       return NextResponse.json({ error: "User already exists" }, { status: 409 });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = await User.create({ email, password: hashedPassword });
+    const newUser = await User.create({ 
+      email, 
+      password: hashedPassword,
+      role 
+    });
 
     return NextResponse.json(
       {
         message: "User registered successfully",
-        user: { email: newUser.email },
+        user: { email: newUser.email, role: newUser.role },
       },
       { status: 201 }
     );

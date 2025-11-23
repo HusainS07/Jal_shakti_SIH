@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
-import { Lock, Mail, Droplets, UserPlus } from "lucide-react";
+import { Lock, Mail, Droplets, UserPlus, Users, Building2 } from "lucide-react";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("user");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,7 +18,7 @@ export default function SignupPage() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, role }),
       });
 
       const data = await res.json();
@@ -82,7 +83,46 @@ export default function SignupPage() {
                   required
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-2">Must be at least 8 characters</p>
+              <p className="text-xs text-gray-500 mt-2">Must be at least 6 characters</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Account Type
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRole("user")}
+                  className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    role === "user"
+                      ? "border-emerald-500 bg-emerald-50 shadow-md"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <Users className={`w-8 h-8 mb-2 ${role === "user" ? "text-emerald-600" : "text-gray-400"}`} />
+                  <span className={`text-sm font-medium ${role === "user" ? "text-emerald-700" : "text-gray-600"}`}>
+                    User
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">General access</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRole("town_planner")}
+                  className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    role === "town_planner"
+                      ? "border-emerald-500 bg-emerald-50 shadow-md"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  }`}
+                >
+                  <Building2 className={`w-8 h-8 mb-2 ${role === "town_planner" ? "text-emerald-600" : "text-gray-400"}`} />
+                  <span className={`text-sm font-medium ${role === "town_planner" ? "text-emerald-700" : "text-gray-600"}`}>
+                    Town Planner
+                  </span>
+                  <span className="text-xs text-gray-500 mt-1">Admin access</span>
+                </button>
+              </div>
             </div>
 
             {error && (

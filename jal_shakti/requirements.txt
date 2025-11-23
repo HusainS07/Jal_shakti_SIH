@@ -2,3 +2,4 @@ bcrypt
 jsonwebtoken
 mongoose
 lucide-react
+groq-sdk
