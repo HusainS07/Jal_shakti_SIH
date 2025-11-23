@@ -1,0 +1,211 @@
+========================================
+       WATER STATION API DOCUMENTATION
+========================================
+
+----------------------------------------
+API 1: GET /api/stations/by-id/[station_id]
+Purpose: Get detailed station information
+
+Request:
+  GET /api/stations/by-id/RJ_JAIPUR_CHOMU_001
+
+Response (200 OK):
+{
+  "success": true,
+  "data": {
+    "station_id": "RJ_JAIPUR_CHOMU_001",
+    "location": {
+      "village": "Chomu",
+      "block": "Chomu",
+      "district": "Jaipur",
+      "state": "Rajasthan"
+    },
+    "current_water_level": {
+      "depth_m": 12.5,
+      "status": "SAFE",
+      "status_color": "green"
+    },
+    "seasonal_levels_latest": {
+      "jan": 12.8,
+      "apr_may": 11.2,
+      "aug": 13.5,
+      "nov": 12.5
+    },
+    "aquifer": {
+      "type": "Alluvial",
+      "storage_capacity_m3": 50000
+    },
+    "extraction": {
+      "borewells": 58,
+      "daily_extraction_m3": 22
+    },
+    "water_quality": {
+      "ph": 7.8,
+      "suitability": "POTABLE"
+    }
+  }
+}
+
+Errors:
+  400 - station_id is required
+  404 - Station not found
+  500 - Server error
+
+----------------------------------------
+API 2: GET /api/ai/[station_id]
+Purpose: Get AI recommendations for water management
+
+Request:
+  GET /api/ai/RJ_JAIPUR_CHOMU_001
+
+Response (200 OK):
+{
+  "daily_extraction_limit_liters": 22000,
+  "water_level_status": "safe",
+  "user_recommendations": {
+    "crops": ["Moong - drought-resistant", "Bajra - water efficient"],
+    "livestock_water": {
+      "cattle_adult_liters_per_day": 50,
+      "poultry_liters_per_day": 5
+    },
+    "household_conservation": ["Fix leaky taps", "Use low-flow showerheads"],
+    "water_quality_notes": "Water quality is good..."
+  },
+  "town_planner_recommendations": {
+    "industrial_limits": "Enforce 50,000 m3/year limit",
+    "recharge_interventions": ["Check dams", "Rainwater harvesting"],
+    "irrigation_improvements": ["Drip irrigation", "Optimize timings"],
+    "summary": "Water situation is safe, continue monitoring..."
+  }
+}
+
+Errors:
+  400 - station_id is required
+  404 - Station not found
+  500 - API Key missing or server error
+
+----------------------------------------
+API 3: GET /api/stations/nearest/[longitude]/[latitude]
+Purpose: Get nearest water stations based on location
+
+Example:
+  GET /api/stations/nearest/73.12536/19.2570744
+
+Response (200 OK):
+{
+  "success": true,
+  "data": [
+    {
+      "station_id": "RJ_JAIPUR_CHOMU_001",
+      "location": {
+        "village": "Chomu",
+        "district": "Jaipur"
+      },
+      "distance_km": 2.5,
+      "current_water_level": {
+        "depth_m": 12.5,
+        "status": "SAFE"
+      }
+    }
+  ]
+}
+
+Errors:
+  400 - Invalid coordinates
+  404 - No stations found nearby
+  500 - Server error
+
+----------------------------------------
+API 4: POST /api/extraction_limit
+Purpose: Calculate safe water extraction limits
+
+Request:
+  POST /api/extraction_limit
+  Content-Type: application/json
+{
+  "station_id": "RJ_JAIPUR_CHOMU_001",
+  "population": 5000,
+  "agricultural_area_hectares": 100
+}
+
+Response (200 OK):
+{
+  "success": true,
+  "extraction_limit": {
+    "daily_limit_m3": 150,
+    "monthly_limit_m3": 4500,
+    "recommended_borewells": 3,
+    "status": "within_safe_limits"
+  }
+}
+
+Errors:
+  400 - Missing required fields
+  500 - Calculation error
+
+----------------------------------------
+API 5: GET /api/future_condition
+Purpose: Forecast water conditions for next 3-4 months
+
+Request:
+  GET /api/future_condition?station_id=RJ_JAIPUR_CHOMU_001
+
+Errors:
+  400 - station_id required
+  404 - Station not found
+  500 - Prediction model error
+
+----------------------------------------
+API 6: GET /api/analytics (View 2024 Analytics)
+Purpose: Get comprehensive water analytics for 2024
+
+Request:
+  GET /api/analytics?year=2024&district=Jaipur
+
+Response (200 OK):
+{
+  "success": true,
+  "forecast": {
+    "next_month": {
+      "predicted_level_m": 11.8,
+      "status": "SAFE",
+      "confidence": 0.85
+    },
+    "3_months": {
+      "predicted_level_m": 10.2,
+      "status": "LOW",
+      "confidence": 0.72
+    },
+    "recommendations": "Increase recharge activities before dry season"
+  },
+  "analytics": {
+    "total_stations": 150,
+    "average_water_level_m": 12.3,
+    "safe_stations": 145,
+    "critical_stations": 5,
+    "total_extraction_m3": 500000,
+    "quality_issues": 3
+  }
+}
+
+Errors:
+  400 - Invalid parameters
+  500 - Server error
+
+----------------------------------------
+QUICK USAGE EXAMPLES:
+
+// Fetch station details
+const station = await fetch('/api/stations/by-id/RJ_JAIPUR_CHOMU_001')
+  .then(res => res.json());
+
+// Get AI recommendations
+const recommendations = await fetch('/api/ai/RJ_JAIPUR_CHOMU_001')
+  .then(res => res.json());
+
+// Find nearest stations
+const nearby = await fetch('/api/stations/nearest/73.12536/19.2570744')
+  .then(res => res.json());
+
+Base URL: http://localhost:3000
+Note: All responses are in JSON format. AI recommendations may take 2-5 seconds.
