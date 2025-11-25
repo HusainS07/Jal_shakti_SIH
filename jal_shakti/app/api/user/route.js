@@ -23,7 +23,7 @@ export async function GET(req) {
     let decoded;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
-    } catch (err) {
+    } catch {
       return NextResponse.json(
         { error: "Invalid or expired token" },
         { status: 401 }
@@ -43,9 +43,9 @@ export async function GET(req) {
       {
         message: "User data retrieved successfully",
         user: {
-          id: user._id,
+          _id: user._id.toString(),
           email: user.email,
-          role: user.role
+          role: user.role,
         },
       },
       { status: 200 }
