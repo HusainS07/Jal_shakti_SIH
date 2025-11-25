@@ -46,12 +46,13 @@ export async function POST(req) {
         email: user.email,
         role: user.role  // ← Role is returned here
       },
+      status:200,
     });
   } catch (error) {
     console.error("Login error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Internal Server Error",
+      status: 500, 
+    });
   }
 }
