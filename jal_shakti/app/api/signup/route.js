@@ -56,14 +56,15 @@ export async function POST(req) {
       {
         message: "User registered successfully",
         user: { email: newUser.email, role: newUser.role },
-      },
-      { status: 201 }
+        status: 201,
+      }
     );
   } catch (error) {
     console.error("Signup error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
+    return NextResponse.json({ 
+       error: "Internal Server Error",
+       status: 500,
+      }
     );
   }
 }
