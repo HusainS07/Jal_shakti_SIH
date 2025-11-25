@@ -31,18 +31,21 @@ export async function POST(req) {
     if (!isMatch)
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
-    // Generate JWT token
+    // Generate JWT token with role included
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: "7d" } // valid for 7 days
     );
 
-    // Return token (Flutter will store it)
+    // Return token with role (Flutter will store it)
     return NextResponse.json({
       message: "Login successful",
       token,
-      user: { email: user.email },
+      user: { 
+        email: user.email,
+        role: user.role  // ← Role is returned here
+      },
     });
   } catch (error) {
     console.error("Login error:", error);

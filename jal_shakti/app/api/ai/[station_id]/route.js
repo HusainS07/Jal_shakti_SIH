@@ -1,5 +1,4 @@
 // app/api/ai/[station_id]/route.js
-///api/ai/RJ_TONK_MALPURA_001
 
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
@@ -8,15 +7,47 @@ import Station from "@/models/station";
 import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 import Groq from "groq-sdk";
 
-// Main logic extracted to a function
+// ——— SIMPLE 5-HOUR IN-MEMORY CACHE (Local only) ———
+const cache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
+
+function getFromCache(station_id) {
+  const key = station_id;
+  const entry = cache.get(key);
+  
+  if (!entry) return null;
+  
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    cache.delete(key); // expire old entries
+    return null;
+  }
+  
+  console.log(`CACHE HIT for ${station_id} (served from memory)`);
+  return entry.data;
+}
+
+function saveToCache(station_id, data) {
+  cache.set(station_id, {
+    data,
+    timestamp: Date.now(),
+  });
+  console.log(`CACHE SET for ${station_id} (5-hour TTL)`);
+}
+
+// ——— MAIN AI HANDLER ———
 async function handleStationAI(station_id) {
+  // Check cache first
+  const cachedResponse = getFromCache(station_id);
+  if (cachedResponse) {
+    return NextResponse.json(cachedResponse);
+  }
+
   if (!station_id) {
     return NextResponse.json({ error: "station_id is required" }, { status: 400 });
   }
 
   await dbConnect();
 
-  // Fetch station data
   const station = await Station.findOne({ station_id }).lean();
   if (!station) {
     return NextResponse.json({ error: "Station not found" }, { status: 404 });
@@ -43,7 +74,7 @@ async function handleStationAI(station_id) {
   const buckets_per_borewell = daily_extraction_limit_liters / 20 / (station.extraction_infrastructure?.borewell_count || 1);
 
   const levels = Object.values(current_levels).filter(Boolean);
-  const avg_level = levels.reduce((a, b) => a + b, 0) / (levels.length || 1);
+  const avg_level = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0;
   let water_level_status = "safe";
   if (avg_level < 3.5) water_level_status = "critical";
   else if (avg_level < 4) water_level_status = "low";
@@ -52,10 +83,10 @@ async function handleStationAI(station_id) {
   const agriculture_water_m3_year = usage?.agriculture?.total_water_requirement_m3_year || 0;
   const industrial_extraction_limit_m3_year = usage?.industries?.total_usage_m3_year || 0;
 
-  // LLM prompt
+  // LLM Call
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "API Key missing" }, { status: 500 });
+    return NextResponse.json({ error: "GROQ_API_KEY missing" }, { status: 500 });
   }
 
   const groq = new Groq({ apiKey });
@@ -67,7 +98,7 @@ ${JSON.stringify({
     station_id,
     location: station.address,
     daily_extraction_limit_liters,
-    buckets_per_borewell,
+    buckets_per_borewell: Number(buckets_per_borewell.toFixed(2)),
     water_level_status,
     current_water_depth: waterStatus.currentDepth,
     seasonal_levels: current_levels,
@@ -102,7 +133,7 @@ Use this exact structure:
 
 {
   "daily_extraction_limit_liters": ${daily_extraction_limit_liters},
-  "buckets_per_borewell": ${buckets_per_borewell.toFixed(2)},
+  "buckets_per_borewell": ${Number(buckets_per_borewell.toFixed(2))},
   "water_level_status": "${water_level_status}",
   "household_water_liters": ${household_water_liters},
   "agriculture_water_m3_year": ${agriculture_water_m3_year},
@@ -127,98 +158,53 @@ Use this exact structure:
   "summary": "2-3 sentence overview of water situation and priority actions"
 }`;
 
-  const completion = await groq.chat.completions.create({
-    messages: [
-      { 
-        role: "system", 
-        content: "You are a water resource expert. Always respond with valid JSON only, no markdown formatting." 
-      },
-      { 
-        role: "user", 
-        content: prompt 
-      }
-    ],
-    model: "llama-3.3-70b-versatile",
-    temperature: 0.5, 
-    max_tokens: 2048, 
-    top_p: 0.9,
-  });
-
-  const text = completion.choices[0]?.message?.content || "";
-
-  // Aggressive cleaning: remove markdown, code blocks, and control characters
-  let cleanedText = text
-    .replace(/```json\n?/gi, '')
-    .replace(/```\n?/g, '')
-    .replace(/^\s+|\s+$/g, '') // trim
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // remove control chars
-
-  let llmJson = {};
-  
-  // Try multiple parsing strategies
   try {
-    llmJson = JSON.parse(cleanedText);
-  } catch (e) {
-    console.warn("First parse attempt failed, trying fallback extraction...");
-    
-    // Strategy 2: Extract JSON object using regex
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const extracted = jsonMatch[0]
-          .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // clean control chars
-        llmJson = JSON.parse(extracted);
-        console.log("✅ Successfully parsed using regex extraction");
-      } catch (e2) {
-        console.error("Regex extraction parse failed:", e2.message);
-        
-        // Strategy 3: Try to fix common JSON issues
-        try {
-          const fixed = jsonMatch[0]
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-            .replace(/,(\s*[}\]])/g, '$1') // remove trailing commas
-            .replace(/([{,]\s*)(\w+):/g, '$1"$2":'); // quote unquoted keys
-          llmJson = JSON.parse(fixed);
-          console.log("✅ Successfully parsed after fixing common issues");
-        } catch (e3) {
-          console.error("All parsing strategies failed");
-          console.log("Raw text sample:", text.substring(0, 200));
-          
-          llmJson = { 
-            error: "Unable to parse JSON response", 
-            raw_text: text,
-            fallback_data: {
-              daily_extraction_limit_liters,
-              buckets_per_borewell,
-              water_level_status,
-              household_water_liters,
-              agriculture_water_m3_year,
-              industrial_extraction_limit_m3_year
-            }
-          };
-        }
-      }
-    } else {
-      console.error("No JSON object found in response");
-      llmJson = { 
-        error: "No JSON object found", 
-        raw_text: text,
-        fallback_data: {
-          daily_extraction_limit_liters,
-          buckets_per_borewell,
-          water_level_status,
-          household_water_liters,
-          agriculture_water_m3_year,
-          industrial_extraction_limit_m3_year
-        }
-      };
-    }
-  }
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: "Return only valid JSON. No explanations. No markdown." },
+        { role: "user", content: prompt }
+      ],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.5,
+      max_tokens: 2048,
+    });
 
-  return NextResponse.json(llmJson);
+    let text = completion.choices[0]?.message?.content || "{}";
+
+    // Clean response aggressively
+    text = text.replace(/```json|```/g, "").trim();
+
+    let llmJson;
+    try {
+      llmJson = JSON.parse(text);
+    } catch (e) {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        llmJson = JSON.parse(jsonMatch[0]
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]")
+          .replace(/(\w+):/g, '"$1":')
+        );
+      } else {
+        throw e;
+      }
+    }
+
+    // Cache the successful response for 5 hours
+    saveToCache(station_id, llmJson);
+
+    return NextResponse.json(llmJson);
+
+  } catch (error) {
+    console.error("AI generation failed:", error.message);
+    return NextResponse.json({
+      error: "Failed to generate recommendations",
+      details: error.message
+    }, { status: 500 });
+  }
 }
 
-// CHANGE: Await params before accessing station_id
+// ——— ROUTE HANDLERS ———
 export async function GET(req, { params }) {
   const { station_id } = await params;
   return handleStationAI(station_id);
