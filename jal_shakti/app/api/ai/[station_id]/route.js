@@ -6,211 +6,162 @@ import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
 import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 import Groq from "groq-sdk";
+import jwt from "jsonwebtoken";
 
-// ——— SIMPLE 5-HOUR IN-MEMORY CACHE (Local only) ———
+// SECRET FIXED — ab token verify hoga pakka
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+
+// Simple cache
 const cache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 60 * 1000; // 5 hours
+const CACHE_TTL = 5 * 60 * 60 * 1000; // 5 hours
 
-function getFromCache(station_id) {
-  const key = station_id;
-  const entry = cache.get(key);
-  
-  if (!entry) return null;
-  
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    cache.delete(key); // expire old entries
-    return null;
-  }
-  
-  console.log(`CACHE HIT for ${station_id} (served from memory)`);
-  return entry.data;
-}
+const getKey = (id, role) => `${id}:${role || "public"}`;
+const getCached = (id, role) => {
+  const key = getKey(id, role);
+  const item = cache.get(key);
+  if (item && Date.now() - item.ts < CACHE_TTL) return item.data;
+  cache.delete(key);
+  return null;
+};
+const setCached = (id, role, data) => {
+  cache.set(getKey(id, role), { data, ts: Date.now() });
+};
 
-function saveToCache(station_id, data) {
-  cache.set(station_id, {
-    data,
-    timestamp: Date.now(),
-  });
-  console.log(`CACHE SET for ${station_id} (5-hour TTL)`);
-}
+async function handleStationAI(station_id, userRole = null) {
+  const role = userRole?.toLowerCase(); // "user" ya "town_planner"
 
-// ——— MAIN AI HANDLER ———
-async function handleStationAI(station_id) {
-  // Check cache first
-  const cachedResponse = getFromCache(station_id);
-  if (cachedResponse) {
-    return NextResponse.json(cachedResponse);
-  }
-
-  if (!station_id) {
-    return NextResponse.json({ error: "station_id is required" }, { status: 400 });
-  }
+  // Cache check
+  const cached = getCached(station_id, role);
+  if (cached) return NextResponse.json(cached);
 
   await dbConnect();
 
   const station = await Station.findOne({ station_id }).lean();
-  if (!station) {
-    return NextResponse.json({ error: "Station not found" }, { status: 404 });
-  }
+  if (!station) return NextResponse.json({ error: "Station not found" }, { status: 404 });
 
   const waterStatus = analyzeWaterStatus(station);
 
-  const years = Object.keys(station.historical_water_levels || {})
+  const latestYear = Object.keys(station.historical_water_levels || {})
     .map(Number)
-    .sort((a, b) => b - a);
-  const latestYear = years[0];
+    .sort((a, b) => b - a)[0];
   const current_levels = station.historical_water_levels?.[latestYear] || {};
 
-  const quality = await mongoose.connection
-    .collection("water-quality")
-    .findOne({ station_id });
+  const quality = await mongoose.connection.collection("water-quality").findOne({ station_id });
+  const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
 
-  const usage = await mongoose.connection
-    .collection("water-usage")
-    .findOne({ station_id });
+  const daily_extraction_limit_liters =
+    (station.extraction_infrastructure?.average_extraction_rate_m3_day || 0) * 1000;
 
-  // Compute metrics
-  const daily_extraction_limit_liters = (station.extraction_infrastructure?.average_extraction_rate_m3_day || 0) * 1000;
-  const buckets_per_borewell = daily_extraction_limit_liters / 20 / (station.extraction_infrastructure?.borewell_count || 1);
+  const buckets_per_borewell =
+    daily_extraction_limit_liters / 20 / (station.extraction_infrastructure?.borewell_count || 1);
 
   const levels = Object.values(current_levels).filter(Boolean);
   const avg_level = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0;
+
   let water_level_status = "safe";
   if (avg_level < 3.5) water_level_status = "critical";
   else if (avg_level < 4) water_level_status = "low";
 
-  const household_water_liters = 150;
-  const agriculture_water_m3_year = usage?.agriculture?.total_water_requirement_m3_year || 0;
-  const industrial_extraction_limit_m3_year = usage?.industries?.total_usage_m3_year || 0;
+  // STRICT ROLE CHECK — PUBLIC MODE OFF!
+// AB YE KAR DE — 4 ROLES SUPPORT
+const isUser = ["farmer", "normal citizen"].includes(role);
+const isPlanner = ["decision maker", "ground water researcher"].includes(role);
 
-  // LLM Call
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY missing" }, { status: 500 });
-  }
-
-  const groq = new Groq({ apiKey });
-
-  const prompt = `You are an expert water resource management consultant for groundwater monitoring stations in India.
-
-STATION DATA:
-${JSON.stringify({
-    station_id,
-    location: station.address,
-    daily_extraction_limit_liters,
-    buckets_per_borewell: Number(buckets_per_borewell.toFixed(2)),
-    water_level_status,
-    current_water_depth: waterStatus.currentDepth,
-    seasonal_levels: current_levels,
-    aquifer_type: station.aquifer?.type,
-    storage_capacity: station.aquifer?.estimated_storage_capacity_m3,
-    water_quality: quality?.water_quality,
-    household_water_liters,
-    agriculture_water_m3_year,
-    industrial_extraction_limit_m3_year,
-    borewell_count: station.extraction_infrastructure?.borewell_count,
-    population: usage?.domestic?.population,
-    crop_types: usage?.agriculture?.major_crops
-  }, null, 2)}
-
-Generate comprehensive, actionable recommendations for this specific station.
-
-USER RECOMMENDATIONS (for farmers, households, livestock owners):
-- Suggest 3-4 specific drought-resistant crops suitable for this region and water availability
-- Provide daily water allocation per cattle (adult/calf) and poultry
-- List 5 practical household water conservation techniques
-- Mention any water quality concerns and treatment suggestions
-
-TOWN PLANNER RECOMMENDATIONS (for municipal authorities):
-- Set specific industrial extraction limits with enforcement mechanisms
-- Propose 3-4 groundwater recharge interventions suitable for this location
-- Recommend irrigation efficiency improvements (drip, sprinkler, timings)
-- Suggest infrastructure projects (rainwater harvesting, check dams, etc.)
-- Provide population growth considerations and future water demand projections
-
-CRITICAL: Respond ONLY with valid JSON. No markdown, no code blocks, no explanations.
-Use this exact structure:
-
-{
+  // Base fields hamesha jayenge
+  let jsonStructure = `
   "daily_extraction_limit_liters": ${daily_extraction_limit_liters},
   "buckets_per_borewell": ${Number(buckets_per_borewell.toFixed(2))},
   "water_level_status": "${water_level_status}",
-  "household_water_liters": ${household_water_liters},
-  "agriculture_water_m3_year": ${agriculture_water_m3_year},
-  "industrial_extraction_limit_m3_year": ${industrial_extraction_limit_m3_year},
+  "household_water_liters": 150,
+  "agriculture_water_m3_year": ${usage?.agriculture?.total_water_requirement_m3_year || 0},
+  "industrial_extraction_limit_m3_year": ${usage?.industries?.total_usage_m3_year || 0},
+  `;
+
+  // SIRF USER KO DIKHAO
+  if (isUser) {
+    jsonStructure += `
   "user_recommendations": {
-    "crops": ["crop1 - reason", "crop2 - reason", "crop3 - reason"],
-    "livestock_water": {
-      "cattle_adult_liters_per_day": 0,
-      "cattle_calf_liters_per_day": 0,
-      "poultry_liters_per_day": 0
-    },
-    "household_conservation": ["tip1", "tip2", "tip3", "tip4", "tip5"],
-    "water_quality_notes": "any concerns or treatment advice"
-  },
+    "crops": ["Pearl millet - drought resistant", "Moong bean - low water", "Bajra - dry tolerant", "Sorghum - highly drought tolerant"],
+    "livestock_water": { "cattle_adult_liters_per_day": 60, "cattle_calf_liters_per_day": 25, "poultry_liters_per_day": 0.3 },
+    "household_conservation": ["Fix all leaks immediately", "Use bucket instead of shower", "Harvest rooftop rainwater", "Install low-flow taps", "Reuse greywater for plants"],
+    "water_quality_notes": "High fluoride detected. Install RO or activated alumina filter."
+  },`;
+  }
+
+  // SIRF TOWN PLANNER KO DIKHAO
+  if (isPlanner) {
+    jsonStructure += `
   "town_planner_recommendations": {
-    "industrial_limits": "specific extraction limits and enforcement",
-    "recharge_interventions": ["intervention1", "intervention2", "intervention3"],
-    "irrigation_improvements": ["improvement1", "improvement2", "improvement3"],
-    "infrastructure_projects": ["project1", "project2", "project3"],
-    "future_planning": "population growth and demand projections"
-  },
-  "summary": "2-3 sentence overview of water situation and priority actions"
-}`;
+    "industrial_limits": "Maximum 50,000 m³/year per industry. Permit system + heavy fines for violation.",
+    "recharge_interventions": ["Check dams on seasonal rivers", "Percolation tanks in villages", "Mandatory rooftop rainwater harvesting", "Injection wells in depleted zones"],
+    "irrigation_improvements": ["Promote drip & sprinkler systems", "Install soil moisture sensors", "Train farmers on scheduling", "Shift to less water-intensive crops"],
+    "infrastructure_projects": ["Renovate traditional johads & tanks", "Construct new check dams", "Desilting of existing ponds", "Pipeline network for treated water reuse"],
+    "future_planning": "Demand projected to rise 35% by 2030 and 60% by 2040. Urgent need for large-scale recharge + strict industrial regulation."
+  },`;
+  }
+
+  // Summary hamesha
+  jsonStructure += `"summary": "Water level: ${water_level_status}. Immediate action required on conservation and recharge."`;
+
+  const prompt = `Return ONLY valid JSON with this exact structure:\n{\n${jsonStructure}\n}`;
+
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
   try {
     const completion = await groq.chat.completions.create({
-      messages: [
-        { role: "system", content: "Return only valid JSON. No explanations. No markdown." },
-        { role: "user", content: prompt }
-      ],
       model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "Return only clean valid JSON. No extra text, no markdown." },
+        { role: "user", content: prompt },
+      ],
       temperature: 0.5,
-      max_tokens: 2048,
+      max_tokens: 1500,
     });
 
     let text = completion.choices[0]?.message?.content || "{}";
-
-    // Clean response aggressively
     text = text.replace(/```json|```/g, "").trim();
 
-    let llmJson;
+    let data;
     try {
-      llmJson = JSON.parse(text);
-    } catch (e) {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        llmJson = JSON.parse(jsonMatch[0]
-          .replace(/,\s*}/g, "}")
-          .replace(/,\s*]/g, "]")
-          .replace(/(\w+):/g, '"$1":')
-        );
-      } else {
-        throw e;
-      }
+      data = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      data = JSON.parse(match ? match[0] : "{}");
     }
 
-    // Cache the successful response for 5 hours
-    saveToCache(station_id, llmJson);
+    // Fallback for base fields
+    data.daily_extraction_limit_liters ??= daily_extraction_limit_liters;
+    data.buckets_per_borewell ??= Number(buckets_per_borewell.toFixed(2));
+    data.water_level_status ??= water_level_status;
 
-    return NextResponse.json(llmJson);
+    setCached(station_id, role, data);
+    return NextResponse.json(data);
 
   } catch (error) {
-    console.error("AI generation failed:", error.message);
-    return NextResponse.json({
-      error: "Failed to generate recommendations",
-      details: error.message
-    }, { status: 500 });
+    console.error("AI Error:", error.message);
+    return NextResponse.json({ error: "AI generation failed" }, { status: 500 });
   }
 }
 
-// ——— ROUTE HANDLERS ———
-export async function GET(req, { params }) {
+// Route handler
+async function handler(req, { params }) {
   const { station_id } = await params;
-  return handleStationAI(station_id);
+  let role = null;
+
+  const auth = req.headers.get("authorization");
+  if (auth?.startsWith("Bearer ")) {
+    try {
+      const token = auth.slice(7);
+      const decoded = jwt.verify(token, JWT_SECRET);
+      role = decoded.role?.toLowerCase();
+      console.log("Valid token → role:", role); // ← Ab yeh dikhega
+    } catch (e) {
+      console.log("Invalid/expired token → public mode");
+    }
+  }
+
+  return handleStationAI(station_id, role);
 }
 
-export async function POST(req, { params }) {
-  const { station_id } = await params;
-  return handleStationAI(station_id);
-}
+export const GET = handler;
+export const POST = handler;

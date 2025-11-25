@@ -14,7 +14,10 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["user", "town_planner"],
+    enum: ["farmer",
+      "normal citizen",
+      "decision maker",
+      "ground water researcher"],
     required: true,
     default: "user",
   },
