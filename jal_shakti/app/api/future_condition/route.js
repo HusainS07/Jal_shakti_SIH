@@ -20,7 +20,47 @@ export async function POST(req) {
     }
 
     const result = await response.json();
-    return NextResponse.json(result);
+    
+    // Calculate recharge rates from predictions
+    const predictions = result.predictions_2024;
+    const recharge_rates = {};
+    
+    if (predictions) {
+      const seasons = ["jan", "apr_may", "aug", "nov"];
+      
+      seasons.forEach((season, index) => {
+        const current = predictions[season];
+        let previous;
+        
+        if (season === "jan") {
+          // Jan compares with previous year's Nov
+          previous = predictions.nov;
+        } else {
+          // Compare with previous season
+          previous = predictions[seasons[index - 1]];
+        }
+        
+        // Check if values are valid
+        if (previous && previous > 0 && current && current > 0) {
+          const percentage = Math.round(Math.abs(current - previous) / previous * 100);
+          const isRecovery = current < previous; // Lower depth = water rose = recovery
+          
+          recharge_rates[season] = {
+            percentage,
+            isRecovery
+          };
+        } else {
+          recharge_rates[season] = null;
+        }
+      });
+    }
+    
+    // Return original result + recharge rates
+    return NextResponse.json({
+      ...result,
+      recharge_rates
+    });
+    
   } catch (error) {
     console.error("ML API Error:", error);
     return NextResponse.json(
