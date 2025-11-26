@@ -1,6 +1,7 @@
 # backend/main.py
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import joblib
@@ -10,6 +11,20 @@ app = FastAPI(
     title="Groundwater Prediction API",
     description="Predicts next year's seasonal groundwater levels using ML model.",
     version="1.0.0"
+)
+
+# ✅ CORS MIDDLEWARE - YOUR VERCEL APP
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://jalshaktisih-git-main-husains07s-projects.vercel.app",  # ✅ Your Vercel URL
+        "https://*.vercel.app",                                          # All Vercel previews
+        "http://localhost:3000",                                         # Local dev
+        "http://localhost:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ---------------------------

@@ -1,18 +1,20 @@
-// app/ai/page.js
 "use client";
 
-import { useState } from 'react';
-import { Search, Droplets, Users, Building2, TrendingUp, AlertCircle, CheckCircle, Loader2, Sprout, Home, Factory } from 'lucide-react';
+import { useState } from "react";
+import {
+  Search, Droplets, Users, Building2, TrendingUp,
+  AlertCircle, CheckCircle, Loader2, Sprout, Home, Factory, CloudRain, Wrench
+} from "lucide-react";
 
 export default function AIRecommendationsPage() {
-  const [stationId, setStationId] = useState('');
+  const [stationId, setStationId] = useState("");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
   const fetchRecommendations = async () => {
     if (!stationId.trim()) {
-      setError('Please enter a station ID');
+      setError("Station ID daal bhai");
       return;
     }
 
@@ -21,16 +23,13 @@ export default function AIRecommendationsPage() {
     setData(null);
 
     try {
-      const response = await fetch(`/api/ai/${stationId.trim()}`);
-      const result = await response.json();
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch recommendations');
-      }
+      const res = await fetch(`/api/ai/${stationId.trim()}`, { headers });
+      const result = await res.json();
 
-      if (result.error) {
-        throw new Error(result.error);
-      }
+      if (!res.ok) throw new Error(result.error || "Failed to fetch");
 
       setData(result);
     } catch (err) {
@@ -40,332 +39,251 @@ export default function AIRecommendationsPage() {
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      fetchRecommendations();
-    }
-  };
+  const f = (n) => (n != null ? Number(n).toLocaleString() : "—");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 py-10 px-4">
       <div className="max-w-7xl mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Droplets className="w-12 h-12 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-800">
-              Water Station AI Assistant
-            </h1>
-          </div>
-          <p className="text-gray-600 text-lg">
-            Get AI-powered recommendations for groundwater management
-          </p>
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-gray-800 flex items-center justify-center gap-4">
+            <Droplets className="w-14 h-14 text-blue-600" />
+            Water AI Assistant
+          </h1>
+          <p className="text-xl text-gray-600 mt-3">Groundwater Management • Rajasthan</p>
         </div>
 
-        {/* Search Section */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
+        {/* Search Bar */}
+        <div className="bg-white rounded-3xl shadow-2xl p-8 mb-10 max-w-3xl mx-auto">
           <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                value={stationId}
-                onChange={(e) => setStationId(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter Station ID (e.g., RJ_JAIPUR_CHOMU_001)"
-                className="w-full px-6 py-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none text-lg"
-              />
-              <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
-            </div>
+            <input
+              type="text"
+              value={stationId}
+              onChange={(e) => setStationId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && fetchRecommendations()}
+              placeholder="e.g. RJ_JAIPUR_CHOMU_001"
+              className="flex-1 px-8 py-5 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-500 focus:outline-none"
+            />
             <button
               onClick={fetchRecommendations}
               disabled={loading}
-              className="px-8 py-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold text-lg transition-colors flex items-center gap-2"
+              className="px-10 py-5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-2xl hover:shadow-xl transform hover:scale-105 transition-all flex items-center gap-3"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <Search className="w-5 h-5" />
-                  Analyze
-                </>
-              )}
+              {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
+              {loading ? "Analyzing..." : "Analyze"}
             </button>
           </div>
         </div>
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-8 flex items-start gap-3">
-            <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+          <div className="max-w-3xl mx-auto bg-red-50 border-2 border-red-300 text-red-700 p-6 rounded-2xl flex items-center gap-4 mb-8">
+            <AlertCircle className="w-10 h-10" />
             <div>
-              <h3 className="font-semibold text-red-800 text-lg mb-1">Error</h3>
-              <p className="text-red-600">{error}</p>
+              <h3 className="font-bold text-xl">Error</h3>
+              <p>{error}</p>
             </div>
           </div>
         )}
 
         {/* Results */}
         {data && (
-          <div className="space-y-6">
-            {/* Summary Card */}
+          <div className="space-y-10">
+
+            {/* Summary */}
             {data.summary && (
-              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl shadow-lg p-8">
-                <div className="flex items-start gap-4">
-                  <CheckCircle className="w-8 h-8 flex-shrink-0 mt-1" />
+              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-10 rounded-3xl shadow-xl">
+                <div className="flex items-start gap-5">
+                  <CheckCircle className="w-12 h-12 flex-shrink-0" />
                   <div>
-                    <h2 className="text-2xl font-bold mb-3">Executive Summary</h2>
-                    <p className="text-blue-50 text-lg leading-relaxed">{data.summary}</p>
+                    <h2 className="text-3xl font-bold mb-4">Executive Summary</h2>
+                    <p className="text-xl leading-relaxed opacity-95">{data.summary}</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
-                <div className="flex items-center gap-3 mb-2">
-                  <Droplets className="w-6 h-6 text-blue-600" />
-                  <h3 className="font-semibold text-gray-700">Water Level Status</h3>
-                </div>
-                <p className="text-3xl font-bold text-gray-800 capitalize">{data.water_level_status}</p>
+            {/* Key Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-white rounded-2xl shadow-xl p-8 text-center transform hover:scale-105 transition">
+                <Droplets className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+                <p className="text-gray-600 font-medium">Water Level Status</p>
+                <p className="text-4xl font-bold text-blue-700 mt-2 capitalize">
+                  {data.water_level_status || "—"}
+                </p>
               </div>
 
-              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
-                <div className="flex items-center gap-3 mb-2">
-                  <TrendingUp className="w-6 h-6 text-green-600" />
-                  <h3 className="font-semibold text-gray-700">Daily Extraction Limit</h3>
-                </div>
-                <p className="text-3xl font-bold text-gray-800">{data.daily_extraction_limit_liters.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">Liters/day</p>
+              <div className="bg-white rounded-2xl shadow-xl p-8 text-center transform hover:scale-105 transition">
+                <TrendingUp className="w-16 h-16 text-green-600 mx-auto mb-4" />
+                <p className="text-gray-600 font-medium">Daily Extraction Limit</p>
+                <p className="text-4xl font-bold text-green-700 mt-2">{f(data.daily_extraction_limit_liters)} L</p>
               </div>
 
-              <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
-                <div className="flex items-center gap-3 mb-2">
-                  <Users className="w-6 h-6 text-purple-600" />
-                  <h3 className="font-semibold text-gray-700">Buckets per Borewell</h3>
-                </div>
-                <p className="text-3xl font-bold text-gray-800">{data.buckets_per_borewell}</p>
-                <p className="text-sm text-gray-500">Per day</p>
+              <div className="bg-white rounded-2xl shadow-xl p-8 text-center transform hover:scale-105 transition">
+                <Users className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+                <p className="text-gray-600 font-medium">Buckets per Borewell</p>
+                <p className="text-4xl font-bold text-purple-700 mt-2">{data.buckets_per_borewell}</p>
               </div>
             </div>
 
             {/* User Recommendations */}
             {data.user_recommendations && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <Users className="w-8 h-8 text-green-600" />
-                  <h2 className="text-2xl font-bold text-gray-800">User Recommendations</h2>
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl p-10 shadow-xl">
+                <h2 className="text-3xl font-bold text-green-800 flex items-center gap-4 mb-8">
+                  <Users className="w-10 h-10" /> Farmer & Household Recommendations
+                </h2>
+
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="bg-white rounded-2xl p-6 shadow">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Sprout className="w-8 h-8 text-green-600" />
+                      <h3 className="text-xl font-bold">Drought-Resistant Crops</h3>
+                    </div>
+                    <ul className="space-y-3">
+                      {data.user_recommendations.crops?.map((crop, i) => (
+                        <li key={i} className="flex items-center gap-3">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <span className="text-gray-700">{crop}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-white rounded-2xl p-6 shadow">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Droplets className="w-8 h-8 text-blue-600" />
+                      <h3 className="text-xl font-bold">Livestock Water Needs</h3>
+                    </div>
+                    <div className="space-y-3 text-lg">
+                      <div className="flex justify-between"><span>Adult Cattle</span><strong>{data.user_recommendations.livestock_water?.cattle_adult_liters_per_day} L/day</strong></div>
+                      <div className="flex justify-between"><span>Calf</span><strong>{data.user_recommendations.livestock_water?.cattle_calf_liters_per_day} L/day</strong></div>
+                      <div className="flex justify-between"><span>Poultry</span><strong>{data.user_recommendations.livestock_water?.poultry_liters_per_day} L/day</strong></div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Crops */}
-                  {data.user_recommendations.crops && (
-                    <div className="bg-green-50 rounded-xl p-6">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Sprout className="w-6 h-6 text-green-700" />
-                        <h3 className="text-xl font-semibold text-green-900">Recommended Crops</h3>
-                      </div>
-                      <ul className="space-y-3">
-                        {data.user_recommendations.crops.map((crop, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-700">{crop}</span>
-                          </li>
-                        ))}
-                      </ul>
+                <div className="mt-8 grid md:grid-cols-2 gap-8">
+                  <div className="bg-white rounded-2xl p-6 shadow">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Home className="w-8 h-8 text-cyan-600" />
+                      <h3 className="text-xl font-bold">Household Conservation Tips</h3>
                     </div>
-                  )}
+                    <ul className="space-y-2">
+                      {data.user_recommendations.household_conservation?.map((tip, i) => (
+                        <li key={i} className="flex items-start gap-3">
+                          <CheckCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+                          <span>{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
 
-                  {/* Livestock Water */}
-                  {data.user_recommendations.livestock_water && (
-                    <div className="bg-blue-50 rounded-xl p-6">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Droplets className="w-6 h-6 text-blue-700" />
-                        <h3 className="text-xl font-semibold text-blue-900">Livestock Water Needs</h3>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Adult Cattle</span>
-                          <span className="text-blue-700 font-bold">{data.user_recommendations.livestock_water.cattle_adult_liters_per_day} L/day</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Calf</span>
-                          <span className="text-blue-700 font-bold">{data.user_recommendations.livestock_water.cattle_calf_liters_per_day} L/day</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Poultry</span>
-                          <span className="text-blue-700 font-bold">{data.user_recommendations.livestock_water.poultry_liters_per_day} L/day</span>
-                        </div>
+                  <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-8 h-8 text-amber-600" />
+                      <div>
+                        <h3 className="text-xl font-bold text-amber-900">Water Quality Alert</h3>
+                        <p className="mt-2 text-gray-800">{data.user_recommendations.water_quality_notes || "No major issues"}</p>
                       </div>
                     </div>
-                  )}
-
-                  {/* Household Conservation */}
-                  {data.user_recommendations.household_conservation && (
-                    <div className="bg-cyan-50 rounded-xl p-6 lg:col-span-2">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Home className="w-6 h-6 text-cyan-700" />
-                        <h3 className="text-xl font-semibold text-cyan-900">Household Conservation Tips</h3>
-                      </div>
-                      <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {data.user_recommendations.household_conservation.map((tip, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <CheckCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
-                            <span className="text-gray-700">{tip}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Water Quality Notes */}
-                  {data.user_recommendations.water_quality_notes && (
-                    <div className="bg-amber-50 rounded-xl p-6 lg:col-span-2 border-l-4 border-amber-500">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="w-6 h-6 text-amber-700 flex-shrink-0 mt-1" />
-                        <div>
-                          <h3 className="text-xl font-semibold text-amber-900 mb-2">Water Quality Notes</h3>
-                          <p className="text-gray-700">{data.user_recommendations.water_quality_notes}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Town Planner Recommendations */}
             {data.town_planner_recommendations && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <Building2 className="w-8 h-8 text-purple-600" />
-                  <h2 className="text-2xl font-bold text-gray-800">Town Planner Recommendations</h2>
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl p-10 shadow-xl">
+                <h2 className="text-3xl font-bold text-purple-800 flex items-center gap-4 mb-10">
+                  <Building2 className="w-12 h-12" /> Town Planner & Municipal Actions
+                </h2>
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <Factory className="w-10 h-10 text-red-600 mb-4" />
+                    <h4 className="font-bold text-lg mb-3">Industrial Limits</h4>
+                    <p className="text-gray-700">{data.town_planner_recommendations.industrial_limits}</p>
+                  </div>
+
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <CloudRain className="w-10 h-10 text-blue-600 mb-4" />
+                    <h4 className="font-bold text-lg mb-3">Recharge Projects</h4>
+                    <ul className="space-y-2">
+                      {data.town_planner_recommendations.recharge_interventions?.map((item, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-blue-600" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <Wrench className="w-10 h-10 text-green-600 mb-4" />
+                    <h4 className="font-bold text-lg mb-3">Irrigation Efficiency</h4>
+                    <ul className="space-y-2">
+                      {data.town_planner_recommendations.irrigation_improvements?.map((item, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
 
-                <div className="space-y-6">
-                  {/* Industrial Limits */}
-                  {data.town_planner_recommendations.industrial_limits && (
-                    <div className="bg-purple-50 rounded-xl p-6">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Factory className="w-6 h-6 text-purple-700" />
-                        <h3 className="text-xl font-semibold text-purple-900">Industrial Extraction Limits</h3>
-                      </div>
-                      <p className="text-gray-700">{data.town_planner_recommendations.industrial_limits}</p>
-                    </div>
-                  )}
+                <div className="mt-8 grid md:grid-cols-2 gap-8">
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <h4 className="font-bold text-lg mb-3">Major Infrastructure</h4>
+                    <ul className="space-y-2">
+                      {data.town_planner_recommendations.infrastructure_projects?.map((item, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-purple-600" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Recharge Interventions */}
-                    {data.town_planner_recommendations.recharge_interventions && (
-                      <div className="bg-blue-50 rounded-xl p-6">
-                        <h3 className="text-xl font-semibold text-blue-900 mb-4">Groundwater Recharge</h3>
-                        <ul className="space-y-2">
-                          {data.town_planner_recommendations.recharge_interventions.map((intervention, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                              <span className="text-gray-700">{intervention}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Irrigation Improvements */}
-                    {data.town_planner_recommendations.irrigation_improvements && (
-                      <div className="bg-green-50 rounded-xl p-6">
-                        <h3 className="text-xl font-semibold text-green-900 mb-4">Irrigation Efficiency</h3>
-                        <ul className="space-y-2">
-                          {data.town_planner_recommendations.irrigation_improvements.map((improvement, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                              <span className="text-gray-700">{improvement}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Infrastructure Projects */}
-                    {data.town_planner_recommendations.infrastructure_projects && (
-                      <div className="bg-cyan-50 rounded-xl p-6">
-                        <h3 className="text-xl font-semibold text-cyan-900 mb-4">Infrastructure Projects</h3>
-                        <ul className="space-y-2">
-                          {data.town_planner_recommendations.infrastructure_projects.map((project, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <CheckCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
-                              <span className="text-gray-700">{project}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Future Planning */}
-                    {data.town_planner_recommendations.future_planning && (
-                      <div className="bg-indigo-50 rounded-xl p-6">
-                        <div className="flex items-center gap-2 mb-3">
-                          <TrendingUp className="w-6 h-6 text-indigo-700" />
-                          <h3 className="text-xl font-semibold text-indigo-900">Future Planning</h3>
-                        </div>
-                        <p className="text-gray-700">{data.town_planner_recommendations.future_planning}</p>
-                      </div>
-                    )}
+                  <div className="bg-indigo-50 border-2 border-indigo-300 rounded-2xl p-6">
+                    <h4 className="font-bold text-xl text-indigo-900 mb-3">Future Planning (2030–2040)</h4>
+                    <p className="text-indigo-800 leading-relaxed">
+                      {data.town_planner_recommendations.future_planning}
+                    </p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Additional Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl shadow-md p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Water Usage Statistics</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                    <span className="text-gray-600">Household Water</span>
-                    <span className="font-bold text-gray-800">{data.household_water_liters} L/day</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                    <span className="text-gray-600">Agriculture (Annual)</span>
-                    <span className="font-bold text-gray-800">{data.agriculture_water_m3_year.toLocaleString()} m³</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Industrial Limit (Annual)</span>
-                    <span className="font-bold text-gray-800">{data.industrial_extraction_limit_m3_year.toLocaleString()} m³</span>
-                  </div>
+            {/* Water Stats */}
+            <div className="bg-white rounded-3xl shadow-2xl p-10">
+              <h3 className="text-2xl font-bold text-gray-800 mb-8 text-center">Annual Water Statistics</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                <div>
+                  <p className="text-gray-600 text-lg">Household Daily Need</p>
+                  <p className="text-4xl font-bold text-blue-600 mt-2">{f(data.household_water_liters)} L</p>
                 </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-500 to-cyan-500 text-white rounded-xl shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-                <div className="space-y-3">
-                  <button className="w-full bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 text-left transition-colors">
-                    Download Report (PDF)
-                  </button>
-                  <button className="w-full bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 text-left transition-colors">
-                    Share with Team
-                  </button>
-                  <button className="w-full bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg px-4 py-3 text-left transition-colors">
-                    Schedule Follow-up
-                  </button>
+                <div>
+                  <p className="text-gray-600 text-lg">Agriculture (Yearly)</p>
+                  <p className="text-4xl font-bold text-green-600 mt-2">{f(data.agriculture_water_m3_year)} m³</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 text-lg">Industrial Limit</p>
+                  <p className="text-4xl font-bold text-red-600 mt-2">{f(data.industrial_extraction_limit_m3_year)} m³</p>
                 </div>
               </div>
             </div>
+
           </div>
         )}
 
         {/* Empty State */}
         {!data && !loading && !error && (
-          <div className="text-center py-16">
-            <Droplets className="w-24 h-24 text-gray-300 mx-auto mb-6" />
-            <h3 className="text-2xl font-semibold text-gray-600 mb-2">
-              Enter a Station ID to Get Started
-            </h3>
-            <p className="text-gray-500">
-              AI-powered insights and recommendations will appear here
-            </p>
+          <div className="text-center py-20">
+            <Droplets className="w-32 h-32 text-gray-300 mx-auto mb-6" />
+            <h2 className="text-3xl font-bold text-gray-600">Enter Station ID to Begin</h2>
+            <p className="text-gray-500 mt-3">AI recommendations will appear here</p>
           </div>
         )}
       </div>

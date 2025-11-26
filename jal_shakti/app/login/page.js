@@ -8,29 +8,31 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
+async function handleLogin(e) {
+  e.preventDefault();
+  setError("");
+  setIsLoading(true);
 
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Login failed");
 
-      alert("Login successful!");
-      // router.push("/");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
+    // YE 2 LINE DAAL DI — AB TOKEN SAVE HOGA AUR AI PAGE PE LE JAYEGA
+    localStorage.setItem("token", data.token);
+    window.location.href = "/ai";  // YA router.push("/ai") agar useRouter hai
+
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setIsLoading(false);
   }
+}
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-cyan-50 to-teal-50 p-4">
