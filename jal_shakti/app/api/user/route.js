@@ -1,3 +1,4 @@
+// api/user
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { dbConnect } from "@/lib/dbConnect";
