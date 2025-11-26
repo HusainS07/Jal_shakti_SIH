@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MapPin, Droplets, CloudRain, Search } from "lucide-react";
+import { MapPin, Droplets, CloudRain, Search, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
 
 export default function AnalyticsPage() {
@@ -17,7 +17,7 @@ export default function AnalyticsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const debounceTimer = useRef(null);
 
-  // Debounced search function
+  // Debounced search (unchanged)
   useEffect(() => {
     if (stationId.length < 2) {
       setSuggestions([]);
@@ -25,20 +25,13 @@ export default function AnalyticsPage() {
       setSearchLoading(false);
       return;
     }
-
     setSearchLoading(true);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
-    // Clear previous timer
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    // Set new timer - wait 500ms after user stops typing
     debounceTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/analytics/stations?search=${encodeURIComponent(stationId)}&limit=10`);
         const json = await res.json();
-        
         if (json.success) {
           setSuggestions(json.stations);
           setShowSuggestions(true);
@@ -48,13 +41,10 @@ export default function AnalyticsPage() {
       } finally {
         setSearchLoading(false);
       }
-    }, 500); // 500ms debounce delay
+    }, 500);
 
-    // Cleanup on unmount
     return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, [stationId]);
 
@@ -71,7 +61,6 @@ export default function AnalyticsPage() {
     setShowSuggestions(false);
 
     try {
-      // Fetch station data by ID
       const res = await fetch(`/api/analytics/station/${encodeURIComponent(stationId.trim())}`);
       const json = await res.json();
 
@@ -85,7 +74,6 @@ export default function AnalyticsPage() {
 
       setData(json.station);
 
-      // Fetch prediction
       const payload = {
         weathered_zone_depth: json.station.weathered_zone_depth,
         fractured_zone_depth: json.station.fractured_zone_depth,
@@ -115,17 +103,12 @@ export default function AnalyticsPage() {
       setError("Failed to fetch data. Please try again.");
       setData(null);
       setPrediction(null);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  // Fetch suggestions when user types
-  const handleInputChange = (value) => {
-    setStationId(value);
-    // Debouncing is now handled by useEffect above
-  };
-
+  const handleInputChange = (value) => setStationId(value);
   const selectSuggestion = (station) => {
     setStationId(station.station_id);
     setShowSuggestions(false);
@@ -134,16 +117,57 @@ export default function AnalyticsPage() {
 
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+  // RECHARGE RATE FROM PREDICTED WATER LEVELS (YOUR EXACT FORMULA)
+  const getRechargeRates = () => {
+    if (!prediction) return {};
+
+    const levels = {
+      jan: Number(prediction.jan) || 0,
+      apr_may: Number(prediction.apr_may) || 0,
+      aug: Number(prediction.aug) || 0,
+      nov: Number(prediction.nov) || 0,
+    };
+
+    const order = ["jan", "apr_may", "aug", "nov"];
+    const rates = {};
+
+    order.forEach((season, i) => {
+      const current = levels[season];
+      let previous;
+
+      if (season === "jan") {
+        previous = levels.nov; // cyclic: Jan uses previous year's Nov
+      } else {
+        previous = levels[order[i - 1]];
+      }
+
+      if (previous <= 0 || current <= 0) {
+        rates[season] = null;
+        return;
+      }
+
+      const pct = Math.round(Math.abs(current - previous) / previous * 100);
+      const isRecovery = current < previous; // lower depth = water came back = recharge
+
+      rates[season] = { pct, isRecovery };
+    });
+
+    return rates;
+  };
+
+  const rechargeRates = getRechargeRates();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-cyan-50 to-purple-50 p-8">
       <div className="max-w-7xl mx-auto">
 
+        {/* HEADER & SEARCH – 100% UNCHANGED */}
         <div className="text-center mb-12">
           <h1 className="text-6xl font-bold text-gray-800 mb-4">Groundwater Analytics</h1>
           <p className="text-2xl text-gray-600">Search by Station ID</p>
         </div>
 
-        {/* Search Form */}
+        {/* SEARCH FORM – UNCHANGED */}
         <div className="max-w-2xl mx-auto mb-16">
           <form onSubmit={handleSearch} className="bg-white rounded-3xl shadow-2xl p-8">
             <div className="flex gap-4">
@@ -161,15 +185,11 @@ export default function AnalyticsPage() {
                   className="w-full px-6 py-4 text-xl border-2 border-gray-300 rounded-2xl focus:outline-none focus:border-teal-500 transition"
                   autoComplete="off"
                 />
-                
-                {/* Loading indicator for search */}
                 {searchLoading && (
                   <div className="absolute right-4 top-[4.5rem] text-teal-600">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-600"></div>
                   </div>
                 )}
-                
-                {/* Autocomplete Dropdown */}
                 {showSuggestions && suggestions.length > 0 && (
                   <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-2xl shadow-2xl max-h-80 overflow-y-auto">
                     {suggestions.map((station, idx) => (
@@ -204,7 +224,7 @@ export default function AnalyticsPage() {
           )}
         </div>
 
-        {/* Loading State */}
+        {/* LOADING / NO RESULTS – UNCHANGED */}
         {loading && (
           <div className="text-center py-20">
             <div className="animate-spin rounded-full h-20 w-20 border-b-4 border-teal-600 mb-6 mx-auto"></div>
@@ -212,19 +232,18 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* No Results State */}
         {!loading && hasSearched && !data && !error && (
           <div className="text-center py-20">
             <p className="text-3xl text-gray-500">No data found. Try another station ID.</p>
           </div>
         )}
 
-        {/* Data Display */}
+        {/* MAIN CONTENT */}
         {data && prediction && (
           <>
             <div className="grid lg:grid-cols-2 gap-12">
 
-              {/* Current Status */}
+              {/* CURRENT STATUS CARD – UNCHANGED */}
               <div className="bg-white rounded-3xl shadow-2xl p-12 text-center">
                 <h2 className="text-4xl font-bold mb-10">Current Water Level</h2>
                 <div className={`w-56 h-56 ${data.waterStatus.statusColor} rounded-full mx-auto flex items-center justify-center text-white text-9xl font-black shadow-2xl mb-8`}>
@@ -256,7 +275,7 @@ export default function AnalyticsPage() {
                 </div>
               </div>
 
-              {/* 2024 Prediction */}
+              {/* 2024 FORECAST CARD – ONLY THIS PART CHANGED */}
               <div className="bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl shadow-2xl p-12 text-center">
                 <h2 className="text-4xl font-bold text-purple-800 mb-10">2024 Forecast</h2>
                 {(() => {
@@ -276,7 +295,8 @@ export default function AnalyticsPage() {
                   );
                 })()}
 
-                <div className="grid grid-cols-4 gap-6">
+                {/* Predicted Levels */}
+                <div className="grid grid-cols-4 gap-6 mb-8">
                   {["jan", "apr_may", "aug", "nov"].map(k => (
                     <div key={k} className={`p-8 rounded-3xl ${k === "apr_may" ? "bg-purple-800 text-white" : "bg-white"} shadow-xl`}>
                       <p className="text-lg font-medium">{k === "apr_may" ? "Apr–May" : k.toUpperCase()}</p>
@@ -284,17 +304,39 @@ export default function AnalyticsPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* RECHARGE RATE FROM WATER LEVEL CHANGE */}
+                <div className="bg-white/90 rounded-3xl p-6 mt-6">
+                  <h3 className="text-xl font-bold text-purple-800 mb-4">Recharge Rate vs Previous Season</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    {["jan", "apr_may", "aug", "nov"].map(season => {
+                      const r = rechargeRates[season];
+                      if (!r) return <div key={season} className="text-center"><span className="text-gray-400">—</span></div>;
+
+                      return (
+                        <div key={season} className="text-center">
+                          <p className="text-sm font-medium text-gray-600">
+                            {season === "apr_may" ? "Apr–May" : season.toUpperCase()}
+                          </p>
+                          <div className={`mt-2 text-2xl font-bold flex items-center justify-center gap-1 ${r.isRecovery ? "text-green-600" : "text-red-600"}`}>
+                            {r.pct}%
+                            {r.isRecovery ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Rainfall Forecast Section */}
+            {/* RAINFALL FORECAST – UNCHANGED */}
             {data.rainfall_forecast && data.rainfall_forecast.length > 0 && (
               <div className="mt-16 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-3xl shadow-2xl p-10 text-white">
                 <h2 className="text-4xl font-bold text-center mb-8 flex items-center justify-center gap-4">
                   <CloudRain className="w-12 h-12" />
                   12-Month Rainfall Forecast (SEAS5 Model)
                 </h2>
-
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-4">
                   {data.rainfall_forecast.map((item, idx) => {
                     const monthName = months[idx];
@@ -317,14 +359,13 @@ export default function AnalyticsPage() {
                     );
                   })}
                 </div>
-
                 <p className="text-center mt-8 text-lg opacity-90">
                   Source: ECMWF SEAS5 Seasonal Forecast • Updated monthly
                 </p>
               </div>
             )}
 
-            {/* Detailed Parameters */}
+            {/* DETAILED PARAMETERS – UNCHANGED */}
             <div className="mt-16 bg-white rounded-3xl shadow-2xl p-10">
               <h2 className="text-4xl font-bold text-center mb-10 text-gray-800">Aquifer & Extraction Details</h2>
               <div className="grid md:grid-cols-3 gap-8 text-lg">
