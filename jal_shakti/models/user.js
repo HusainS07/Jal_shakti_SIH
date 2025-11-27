@@ -14,13 +14,20 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ["farmer",
-      "normal citizen",
-      "decision maker",
-      "ground water researcher"],
+    enum: ["farmer", "normal citizen", "decision maker", "ground water researcher"],
     required: true,
-    default: "user",
   },
-});
+  // NEW: Personal farming info
+  farmingProfile: {
+    crops: [String],                    // e.g., ["Wheat", "Mustard", "Bajra"]
+    livestock: [String],                // e.g., ["Cow", "Buffalo", "Goat"]
+    landAreaAcres: { type: Number },    // optional
+    irrigationMethod: {                 // optional but helpful
+      type: String,
+      enum: ["flood", "drip", "sprinkler", "rainfed"],
+      default: "flood"
+    }
+  }
+}, { timestamps: true });
 
 export default mongoose.models.User || mongoose.model("User", userSchema);

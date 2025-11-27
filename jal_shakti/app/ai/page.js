@@ -42,7 +42,7 @@ export default function AIRecommendationsPage() {
   const f = (n) => (n != null ? Number(n).toLocaleString() : "—");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50 py-10 px-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 via-white to-cyan-50 py-10 px-4">
       <div className="max-w-7xl mx-auto">
 
         {/* Header */}
@@ -51,7 +51,7 @@ export default function AIRecommendationsPage() {
             <Droplets className="w-14 h-14 text-blue-600" />
             Water AI Assistant
           </h1>
-          <p className="text-xl text-gray-600 mt-3">Groundwater Management • Rajasthan</p>
+          <p className="text-xl text-gray-600 mt-3">Groundwater Management • INDIA</p>
         </div>
 
         {/* Search Bar */}
@@ -68,7 +68,7 @@ export default function AIRecommendationsPage() {
             <button
               onClick={fetchRecommendations}
               disabled={loading}
-              className="px-10 py-5 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-2xl hover:shadow-xl transform hover:scale-105 transition-all flex items-center gap-3"
+              className="px-10 py-5 bg-linear-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-2xl hover:shadow-xl transform hover:scale-105 transition-all flex items-center gap-3"
             >
               {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Search className="w-6 h-6" />}
               {loading ? "Analyzing..." : "Analyze"}
@@ -93,9 +93,9 @@ export default function AIRecommendationsPage() {
 
             {/* Summary */}
             {data.summary && (
-              <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-10 rounded-3xl shadow-xl">
+              <div className="bg-linear-to-r from-blue-600 to-cyan-600 text-white p-10 rounded-3xl shadow-xl">
                 <div className="flex items-start gap-5">
-                  <CheckCircle className="w-12 h-12 flex-shrink-0" />
+                  <CheckCircle className="w-12 h-12 shrink-0" />
                   <div>
                     <h2 className="text-3xl font-bold mb-4">Executive Summary</h2>
                     <p className="text-xl leading-relaxed opacity-95">{data.summary}</p>
@@ -127,9 +127,301 @@ export default function AIRecommendationsPage() {
               </div>
             </div>
 
-            {/* User Recommendations */}
+            {/* Personal Advice for Farmers/Citizens */}
+            {data.personal_advice && (
+              <div className="bg-linear-to-br from-green-50 to-emerald-50 rounded-3xl p-10 shadow-xl">
+                <h2 className="text-3xl font-bold text-green-800 flex items-center gap-4 mb-8">
+                  <Sprout className="w-10 h-10" /> Personal Farmer Advice
+                </h2>
+
+                {/* Greeting */}
+                {data.personal_advice.message_to_farmer && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 border-l-4 border-green-600 shadow">
+                    <p className="text-lg text-gray-800 italic">{data.personal_advice.message_to_farmer}</p>
+                  </div>
+                )}
+
+                {/* Your Profile */}
+                {data.personal_advice.your_profile && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-green-700 mb-4">Your Farm Profile</h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-gray-600 font-semibold mb-2">Crops</p>
+                        <p className="text-gray-800">{data.personal_advice.your_profile.crops || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-semibold mb-2">Livestock</p>
+                        <p className="text-gray-800">{data.personal_advice.your_profile.livestock || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-semibold mb-2">Land Size</p>
+                        <p className="text-gray-800">{data.personal_advice.your_profile.land_size || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600 font-semibold mb-2">Irrigation Method</p>
+                        <p className="text-gray-800">{data.personal_advice.your_profile.irrigation_method || "—"}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Immediate Actions */}
+                {data.personal_advice.immediate_actions && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-amber-700 mb-4 flex items-center gap-2">
+                      <AlertCircle className="w-6 h-6" /> Immediate Actions
+                    </h3>
+                    <ol className="space-y-3">
+                      {(Array.isArray(data.personal_advice.immediate_actions) 
+                        ? data.personal_advice.immediate_actions 
+                        : [data.personal_advice.immediate_actions]
+                      ).map((action, i) => (
+                        <li key={i} className="flex gap-4">
+                          <span className="shrink-0 w-8 h-8 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center font-bold">{i + 1}</span>
+                          <span className="text-gray-800 pt-1">{action}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Crop Recommendations */}
+                {data.personal_advice.crop_recommendations && (
+                  <div className="grid md:grid-cols-2 gap-8 mb-8">
+                    {/* Current Crops */}
+                    {typeof data.personal_advice.crop_recommendations === 'object' && data.personal_advice.crop_recommendations.your_current_crops && (
+                      <div className="bg-blue-50 rounded-2xl p-6 shadow border-l-4 border-blue-600">
+                        <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
+                          <Sprout className="w-6 h-6" /> Your Current Crops
+                        </h3>
+                        <p className="text-lg font-semibold text-blue-900">{data.personal_advice.crop_recommendations.your_current_crops}</p>
+                        {data.personal_advice.crop_recommendations.personalized_advice && (
+                          <p className="text-sm text-blue-700 mt-3 italic">{data.personal_advice.crop_recommendations.personalized_advice}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Recommended Additions */}
+                    {typeof data.personal_advice.crop_recommendations === 'object' && data.personal_advice.crop_recommendations.recommended_additions && (
+                      <div className="bg-green-50 rounded-2xl p-6 shadow border-l-4 border-green-600">
+                        <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center gap-2">
+                          <CheckCircle className="w-6 h-6" /> Recommended to Add
+                        </h3>
+                        <ul className="space-y-2">
+                          {(Array.isArray(data.personal_advice.crop_recommendations.recommended_additions) 
+                            ? data.personal_advice.crop_recommendations.recommended_additions 
+                            : [data.personal_advice.crop_recommendations.recommended_additions]
+                          ).map((crop, i) => (
+                            <li key={i} className="flex items-center gap-2 text-gray-800">
+                              <span className="w-2 h-2 bg-green-600 rounded-full"></span>
+                              {crop}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Avoid in Dry Season */}
+                    {typeof data.personal_advice.crop_recommendations === 'object' && data.personal_advice.crop_recommendations.avoid_in_dry_season && (
+                      <div className="bg-red-50 rounded-2xl p-6 shadow border-l-4 border-red-500">
+                        <h3 className="text-xl font-bold text-red-700 mb-4 flex items-center gap-2">
+                          <AlertCircle className="w-6 h-6" /> Avoid in Dry Season
+                        </h3>
+                        <ul className="space-y-2">
+                          {(Array.isArray(data.personal_advice.crop_recommendations.avoid_in_dry_season) 
+                            ? data.personal_advice.crop_recommendations.avoid_in_dry_season 
+                            : [data.personal_advice.crop_recommendations.avoid_in_dry_season]
+                          ).map((crop, i) => (
+                            <li key={i} className="flex items-center gap-2 text-red-800">
+                              <span className="w-2 h-2 bg-red-600 rounded-full"></span>
+                              {crop}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Water Efficient Varieties */}
+                    {typeof data.personal_advice.crop_recommendations === 'object' && data.personal_advice.crop_recommendations.water_efficient_varieties && (
+                      <div className="bg-cyan-50 rounded-2xl p-6 shadow border-l-4 border-cyan-600">
+                        <h3 className="text-xl font-bold text-cyan-800 mb-4">💧 Water-Efficient Tips</h3>
+                        <p className="text-gray-800">{data.personal_advice.crop_recommendations.water_efficient_varieties}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Irrigation Tips */}
+                {data.personal_advice.irrigation_tips && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
+                      <Droplets className="w-6 h-6" /> Irrigation Methods & Tips
+                    </h3>
+                    {typeof data.personal_advice.irrigation_tips === 'object' && data.personal_advice.irrigation_tips.method && (
+                      <div className="mb-4 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                        <p className="font-semibold text-blue-900 mb-3">Your Method: <span className="capitalize">{data.personal_advice.irrigation_tips.method}</span></p>
+                        <ul className="space-y-2">
+                          {(Array.isArray(data.personal_advice.irrigation_tips.tips) 
+                            ? data.personal_advice.irrigation_tips.tips 
+                            : [data.personal_advice.irrigation_tips.tips]
+                          ).map((tip, i) => (
+                            <li key={i} className="flex gap-2 text-gray-800">
+                              <span className="shrink-0 text-blue-600 mt-1">•</span>
+                              <span>{tip}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Livestock Care */}
+                {data.personal_advice.livestock_care && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-amber-700 mb-4">Livestock Water Care</h3>
+                    {typeof data.personal_advice.livestock_care === 'object' && data.personal_advice.livestock_care.animals && (
+                      <div className="mb-4 p-4 bg-amber-50 rounded-lg border-l-4 border-amber-600">
+                        <p className="font-semibold text-amber-900 mb-3">Your Animals: {data.personal_advice.livestock_care.animals}</p>
+                        <ul className="space-y-2">
+                          {(Array.isArray(data.personal_advice.livestock_care.tips) 
+                            ? data.personal_advice.livestock_care.tips 
+                            : [data.personal_advice.livestock_care.tips]
+                          ).map((tip, i) => (
+                            <li key={i} className="flex gap-2 text-gray-800">
+                              <span className="shrink-0 text-amber-600 mt-1">•</span>
+                              <span>{tip}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Rainwater Harvesting */}
+                {data.personal_advice.rainwater_harvesting && (
+                  <div className="bg-blue-50 rounded-2xl p-6 mb-8 shadow border-l-4 border-blue-600">
+                    <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
+                      <CloudRain className="w-6 h-6" /> Rainwater Harvesting
+                    </h3>
+                    {typeof data.personal_advice.rainwater_harvesting === 'object' && data.personal_advice.rainwater_harvesting.farm_size && (
+                      <div className="mb-4 p-4 bg-white rounded-lg border-l-4 border-blue-600">
+                        <p className="font-semibold text-blue-900 mb-3">For Your Farm: {data.personal_advice.rainwater_harvesting.farm_size}</p>
+                        <ul className="space-y-2">
+                          {(Array.isArray(data.personal_advice.rainwater_harvesting.solutions) 
+                            ? data.personal_advice.rainwater_harvesting.solutions 
+                            : [data.personal_advice.rainwater_harvesting.solutions]
+                          ).map((solution, i) => (
+                            <li key={i} className="flex gap-2 text-gray-800">
+                              <span className="shrink-0 text-blue-600 mt-1">•</span>
+                              <span>{solution}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Government Schemes */}
+                {data.personal_advice.government_schemes && (
+                  <div className="bg-purple-50 rounded-2xl p-6 mb-8 shadow border-l-4 border-purple-600">
+                    <h3 className="text-xl font-bold text-purple-800 mb-4">Government Schemes</h3>
+                    <ul className="space-y-2">
+                      {(Array.isArray(data.personal_advice.government_schemes) 
+                        ? data.personal_advice.government_schemes 
+                        : [data.personal_advice.government_schemes]
+                      ).map((scheme, i) => (
+                        <li key={i} className="flex gap-2 text-gray-800">
+                          <span className="shrink-0 text-purple-600 mt-1">•</span>
+                          <span>{scheme}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Critical Warning */}
+                {data.personal_advice.critical_warning && (
+                  <div className="bg-red-100 border-2 border-red-500 rounded-2xl p-6 mb-8 shadow">
+                    <div className="flex items-start gap-4">
+                      <AlertCircle className="w-8 h-8 text-red-700 shrink-0 mt-1" />
+                      <div>
+                        <h3 className="text-xl font-bold text-red-900">Critical Water Alert</h3>
+                        <p className="mt-2 text-red-800">{data.personal_advice.critical_warning}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* General Conservation Tips */}
+                {data.general_conservation_tips && (
+                  <div className="bg-white rounded-2xl p-6 shadow">
+                    <h3 className="text-xl font-bold text-teal-700 mb-6">General Conservation Tips</h3>
+                    <div className="grid md:grid-cols-3 gap-6">
+                      {data.general_conservation_tips.household && (
+                        <div className="bg-cyan-50 rounded-lg p-4 border-l-4 border-cyan-600">
+                          <h4 className="font-bold text-cyan-900 mb-3 flex items-center gap-2">
+                            <Home className="w-5 h-5" /> Household
+                          </h4>
+                          <ul className="space-y-2">
+                            {(Array.isArray(data.general_conservation_tips.household) 
+                              ? data.general_conservation_tips.household 
+                              : [data.general_conservation_tips.household]
+                            ).map((tip, i) => (
+                              <li key={i} className="flex gap-2 text-sm text-gray-800">
+                                <span className="shrink-0 text-cyan-600 mt-1">•</span>
+                                <span>{tip}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {data.general_conservation_tips.agriculture && (
+                        <div className="bg-green-50 rounded-lg p-4 border-l-4 border-green-600">
+                          <h4 className="font-bold text-green-900 mb-3 flex items-center gap-2">
+                            <Sprout className="w-5 h-5" /> Agriculture
+                          </h4>
+                          <ul className="space-y-2">
+                            {(Array.isArray(data.general_conservation_tips.agriculture) 
+                              ? data.general_conservation_tips.agriculture 
+                              : [data.general_conservation_tips.agriculture]
+                            ).map((tip, i) => (
+                              <li key={i} className="flex gap-2 text-sm text-gray-800">
+                                <span className="shrink-0 text-green-600 mt-1">•</span>
+                                <span>{tip}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {data.general_conservation_tips.livestock && (
+                        <div className="bg-amber-50 rounded-lg p-4 border-l-4 border-amber-600">
+                          <h4 className="font-bold text-amber-900 mb-3">Livestock</h4>
+                          <ul className="space-y-2">
+                            {(Array.isArray(data.general_conservation_tips.livestock) 
+                              ? data.general_conservation_tips.livestock 
+                              : [data.general_conservation_tips.livestock]
+                            ).map((tip, i) => (
+                              <li key={i} className="flex gap-2 text-sm text-gray-800">
+                                <span className="shrink-0 text-amber-600 mt-1">•</span>
+                                <span>{tip}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* User Recommendations (keep existing) */}
             {data.user_recommendations && (
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl p-10 shadow-xl">
+              <div className="bg-linear-to-br from-green-50 to-emerald-50 rounded-3xl p-10 shadow-xl">
                 <h2 className="text-3xl font-bold text-green-800 flex items-center gap-4 mb-8">
                   <Users className="w-10 h-10" /> Farmer & Household Recommendations
                 </h2>
@@ -172,7 +464,7 @@ export default function AIRecommendationsPage() {
                     <ul className="space-y-2">
                       {data.user_recommendations.household_conservation?.map((tip, i) => (
                         <li key={i} className="flex items-start gap-3">
-                          <CheckCircle className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+                          <CheckCircle className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
                           <span>{tip}</span>
                         </li>
                       ))}
@@ -192,9 +484,146 @@ export default function AIRecommendationsPage() {
               </div>
             )}
 
-            {/* Town Planner Recommendations */}
+            {/* Planner Recommendations - NEW COMPREHENSIVE */}
+            {data.planner_recommendations && (
+              <div className="bg-linear-to-br from-purple-50 to-indigo-50 rounded-3xl p-10 shadow-xl">
+                <h2 className="text-3xl font-bold text-purple-800 flex items-center gap-4 mb-10">
+                  <Building2 className="w-12 h-12" /> Government & Planning Actions
+                </h2>
+
+                {/* Immediate Actions */}
+                {data.planner_recommendations.immediate_actions && (
+                  <div className="bg-red-50 border-l-4 border-red-600 rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-red-800 mb-4 flex items-center gap-2">
+                      <AlertCircle className="w-6 h-6" /> Immediate Actions (Priority)
+                    </h3>
+                    <ol className="space-y-3">
+                      {data.planner_recommendations.immediate_actions.map((action, i) => (
+                        <li key={i} className="flex gap-4">
+                          <span className="shrink-0 w-8 h-8 bg-red-200 text-red-700 rounded-full flex items-center justify-center font-bold text-sm">{i + 1}</span>
+                          <span className="text-gray-800 pt-1">{action}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Policy Interventions */}
+                {data.planner_recommendations.policy_interventions && (
+                  <div className="bg-white rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Policy Interventions</h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {Object.entries(data.planner_recommendations.policy_interventions).map(([key, value], i) => (
+                        <div key={i} className="bg-gray-50 rounded-lg p-4 border-l-4 border-purple-500">
+                          <h4 className="font-bold text-gray-800 capitalize mb-2">{key.replace(/_/g, " ")}</h4>
+                          <p className="text-sm text-gray-700">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recharge Infrastructure */}
+                {data.planner_recommendations.recharge_infrastructure && (
+                  <div className="bg-blue-50 rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
+                      <CloudRain className="w-6 h-6" /> Recharge Infrastructure
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {Object.entries(data.planner_recommendations.recharge_infrastructure).map(([type, desc], i) => (
+                        <div key={i} className="bg-white rounded-lg p-4 border border-blue-200">
+                          <p className="font-bold text-blue-900 capitalize mb-2">{type.replace(/_/g, " ")}</p>
+                          <p className="text-sm text-gray-800">{desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Irrigation Modernization */}
+                {data.planner_recommendations.irrigation_modernization && (
+                  <div className="bg-green-50 rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-green-800 mb-4 flex items-center gap-2">
+                      <Sprout className="w-6 h-6" /> Irrigation Modernization
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {Object.entries(data.planner_recommendations.irrigation_modernization).map(([initiative, detail], i) => (
+                        <div key={i} className="bg-white rounded-lg p-4 border border-green-200">
+                          <p className="font-bold text-green-900 capitalize mb-2">{initiative.replace(/_/g, " ")}</p>
+                          <p className="text-sm text-gray-800">{detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Water Quality Management */}
+                {data.planner_recommendations.water_quality_management && (
+                  <div className="bg-amber-50 rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-amber-800 mb-4">Water Quality Management</h3>
+                    <div className="space-y-3">
+                      {Object.entries(data.planner_recommendations.water_quality_management).map(([measure, detail], i) => (
+                        <div key={i} className="bg-white rounded-lg p-4 border-l-4 border-amber-500">
+                          <p className="font-bold text-amber-900 capitalize">{measure.replace(/_/g, " ")}</p>
+                          <p className="text-sm text-gray-800 mt-1">{detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Future Projections */}
+                {data.planner_recommendations.future_projections && (
+                  <div className="bg-indigo-100 border-2 border-indigo-500 rounded-2xl p-6 mb-8 shadow">
+                    <h3 className="text-xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-6 h-6" /> Future Projections (2030-2040)
+                    </h3>
+                    <div className="space-y-3">
+                      {Object.entries(data.planner_recommendations.future_projections).map(([metric, value], i) => (
+                        <div key={i} className="bg-white rounded-lg p-3">
+                          <p className="font-bold text-indigo-900 capitalize mb-1">{metric.replace(/_/g, " ")}</p>
+                          <p className="text-sm text-gray-800">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Financing */}
+                {data.planner_recommendations.financing && (
+                  <div className="bg-white rounded-2xl p-6 shadow">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Financing & Funding</h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <h4 className="font-bold text-gray-800 mb-3">Government Schemes</h4>
+                        <ul className="space-y-2">
+                          {data.planner_recommendations.financing.government_schemes?.map((scheme, i) => (
+                            <li key={i} className="flex items-center gap-2 text-sm text-gray-800">
+                              <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+                              {scheme}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-500">
+                          <p className="text-sm font-bold text-blue-900 mb-1">Estimated Cost</p>
+                          <p className="text-lg font-bold text-blue-700">{data.planner_recommendations.financing.estimated_cost}</p>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-4 border-l-4 border-green-500">
+                          <p className="text-sm font-bold text-green-900 mb-1">Community Contribution</p>
+                          <p className="text-gray-800">{data.planner_recommendations.financing.community_funding}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Town Planner Recommendations (keep existing for backward compatibility) */}
             {data.town_planner_recommendations && (
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-3xl p-10 shadow-xl">
+              <div className="bg-linear-to-br from-purple-50 to-indigo-50 rounded-3xl p-10 shadow-xl">
                 <h2 className="text-3xl font-bold text-purple-800 flex items-center gap-4 mb-10">
                   <Building2 className="w-12 h-12" /> Town Planner & Municipal Actions
                 </h2>
