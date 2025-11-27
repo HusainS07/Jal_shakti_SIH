@@ -62,7 +62,7 @@ export async function POST(req) {
     });
     
   } catch (error) {
-    console.error("ML API Error:", error);
+    console.error("ML API Error is :", error);
     return NextResponse.json(
       { error: "Failed to predict 2024 levels", details: error.message },
       { status: 500 }
