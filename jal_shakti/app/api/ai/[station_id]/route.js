@@ -8,7 +8,7 @@ import User from "@/models/user";
 import Groq from "groq-sdk";
 import jwt from "jsonwebtoken";
 
-    const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 60 * 1000; // 5 hours
 
@@ -69,19 +69,28 @@ async function handleStationAI(station_id, role = null, userId = null) {
   console.log("  isUser:", isUser, "(farmer or normal citizen)");
   console.log("  isPlanner:", isPlanner, "(decision maker or ground water researcher)");
 
-  // Fetch personal farming profile
+  // Fetch personal farming profile with DETAILED LOGGING
   let farmingProfile = null;
   if (userId && isUser) {
     console.log("\n🚜 [AI API] Fetching farming profile for user:", userId);
-    const user = await User.findById(userId).select("farmingProfile").lean();
+    const user = await User.findById(userId).select("farmingProfile email role").lean();
     if (user) {
       console.log("  ✅ User found in DB");
+      console.log("  📧 Email:", user.email);
+      console.log("  👤 Role:", user.role);
+      console.log("  📋 Full user object:", JSON.stringify(user, null, 2));
+      
       if (user.farmingProfile) {
         farmingProfile = user.farmingProfile;
         console.log("  ✅ Farming profile found!");
         console.log("  📋 Profile data:", JSON.stringify(farmingProfile, null, 2));
+        console.log("  🌾 Crops:", farmingProfile.crops);
+        console.log("  🐄 Livestock:", farmingProfile.livestock);
+        console.log("  📏 Land Area:", farmingProfile.landAreaAcres, "acres");
+        console.log("  💧 Irrigation:", farmingProfile.irrigationMethod);
       } else {
         console.log("  ⚠️  User exists but NO farming profile saved");
+        console.log("  ⚠️  farmingProfile field is:", user.farmingProfile);
       }
     } else {
       console.log("  ❌ User NOT found in DB:", userId);
@@ -175,7 +184,7 @@ Return ONLY valid JSON with this exact structure:
   }`;
   }
 
-    if (isPlanner) {
+  if (isPlanner) {
     prompt += `,
   "planner_recommendations": {
     "immediate_actions": [
@@ -285,7 +294,9 @@ Return ONLY valid JSON with this exact structure:
     cache.set(cacheKey, { data: fallbackData, ts: Date.now() });
     return fallbackData;
   }
-}// Route Handler
+}
+
+// Route Handler
 async function handler(req, { params }) {
   const { station_id } = await params;
   let role = null;

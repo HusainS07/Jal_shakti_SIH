@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Bot, User, Loader2, Info, Droplet } from "lucide-react";
+import { Send, Bot, User, Loader2, Info, Droplet, Sprout, Beef } from "lucide-react";
 
 // Simple markdown renderer for chat messages
 function renderMessage(text) {
@@ -74,6 +74,7 @@ function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [stationData, setStationData] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [needsStationId, setNeedsStationId] = useState(true);
   const messagesEndRef = useRef(null);
 
@@ -86,7 +87,7 @@ function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    // Initial greeting
+    // Initial greeting - will be replaced by server greeting
     setMessages([
       {
         role: "assistant",
@@ -153,6 +154,11 @@ function ChatPage() {
         setNeedsStationId(false);
       }
 
+      // Update user profile if provided
+      if (data.userProfile) {
+        setUserProfile(data.userProfile);
+      }
+
       // Check if still needs station ID
       if (data.needsStationId !== undefined) {
         setNeedsStationId(data.needsStationId);
@@ -205,34 +211,70 @@ function ChatPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">Water Management Assistant</h1>
-                <p className="text-sm text-gray-500">Ask me anything about groundwater stations</p>
+                <p className="text-sm text-gray-500">
+                  {userProfile ? "Personalized advice for your farm" : "Ask me anything about groundwater stations"}
+                </p>
               </div>
             </div>
             
-            {stationData && (
-              <div className="bg-blue-50 px-4 py-2 rounded-lg">
-                <div className="text-xs text-gray-600">Active Station</div>
-                <div className="font-semibold text-blue-900">{stationData.station_name}</div>
-                <div className="text-xs text-gray-600">{stationData.district}, {stationData.state}</div>
-              </div>
-            )}
+
           </div>
 
-          {/* Station Info Card */}
-          {stationData && (
-            <div className="mt-4 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl p-4 text-white">
+          {/* User Farming Profile Card */}
+          {userProfile && (userProfile.crops?.length > 0 || userProfile.livestock?.length > 0) && (
+            <div className="mt-4 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl p-4 text-white">
               <div className="flex items-center gap-2 mb-2">
-                <Info className="w-4 h-4" />
-                <span className="font-semibold">Station Information</span>
+                <Sprout className="w-4 h-4" />
+                <span className="font-semibold">Your Farming Profile</span>
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
+                {userProfile.crops?.length > 0 && (
+                  <div>
+                    <div className="opacity-80">Crops</div>
+                    <div className="font-semibold">{userProfile.crops.join(", ")}</div>
+                  </div>
+                )}
+                {userProfile.livestock?.length > 0 && (
+                  <div>
+                    <div className="opacity-80">Livestock</div>
+                    <div className="font-semibold">{userProfile.livestock.join(", ")}</div>
+                  </div>
+                )}
+                {userProfile.landAreaAcres && (
+                  <div>
+                    <div className="opacity-80">Land Area</div>
+                    <div className="font-semibold">{userProfile.landAreaAcres} acres</div>
+                  </div>
+                )}
+                {userProfile.irrigationMethod && (
+                  <div>
+                    <div className="opacity-80">Irrigation</div>
+                    <div className="font-semibold capitalize">{userProfile.irrigationMethod}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Station Info Card - Only show if station name is not Unknown */}
+          {stationData && stationData.station_name !== "Unknown Station" && (
+            <div className="mt-4 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl p-4 text-white">
+              <div className="flex items-center gap-2 mb-3">
+                <Info className="w-4 h-4" />
+                <span className="font-semibold">Current Station: {stationData.station_name}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <div className="opacity-80">Location</div>
+                  <div className="font-semibold">{stationData.district}, {stationData.state}</div>
+                </div>
                 <div>
                   <div className="opacity-80">Station ID</div>
                   <div className="font-semibold">{stationData.station_id}</div>
                 </div>
                 <div>
                   <div className="opacity-80">Water Status</div>
-                  <div className={`font-semibold ${getStatusColor(stationData.water_level_status)}`}>
+                  <div className="font-semibold bg-white/20 px-2 py-1 rounded inline-block">
                     {stationData.water_level_status?.toUpperCase()}
                   </div>
                 </div>
@@ -317,6 +359,8 @@ function ChatPage() {
               placeholder={
                 needsStationId
                   ? "Enter station ID (e.g., 12345)..."
+                  : userProfile
+                  ? `Ask about ${userProfile.crops?.join(", ") || "your crops"}, water needs, etc...`
                   : "Ask about water levels, quality, recommendations..."
               }
               className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 transition-colors"
@@ -342,20 +386,39 @@ function ChatPage() {
           {!needsStationId && (
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="text-xs text-gray-500">Quick questions:</span>
-              {[
-                "What's the water quality?",
-                "Show conservation tips",
-                "Recommend crops",
-                "Water level trends",
-              ].map((suggestion, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setInput(suggestion)}
-                  className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors"
-                >
-                  {suggestion}
-                </button>
-              ))}
+              {userProfile && userProfile.crops?.length > 0 ? (
+                // Personalized suggestions for farmers
+                [
+                  `Water needs for ${userProfile.crops[0]}?`,
+                  "Best irrigation schedule?",
+                  userProfile.livestock?.length > 0 ? `Water for ${userProfile.livestock[0]}?` : "Conservation tips?",
+                  "Crop alternatives?",
+                ].map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInput(suggestion)}
+                    className="text-xs bg-green-50 text-green-600 px-3 py-1 rounded-full hover:bg-green-100 transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))
+              ) : (
+                // Generic suggestions
+                [
+                  "What's the water quality?",
+                  "Show conservation tips",
+                  "Recommend crops",
+                  "Water level trends",
+                ].map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInput(suggestion)}
+                    className="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))
+              )}
             </div>
           )}
         </div>
