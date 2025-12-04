@@ -41,7 +41,7 @@ async function getUserDataForAI(userId) {
 }
 
 async function handleStationAI(station_id, role = null, userId = null) {
-  console.log("\n🔍 [AI API] ========== NEW REQUEST ==========");
+  console.log("\n🔍 [AI API] ========= NEW REQUEST =========");
   console.log("🏢 Station ID:", station_id);
   console.log("👤 Role:", role);
   console.log("🆔 UserId:", userId);
