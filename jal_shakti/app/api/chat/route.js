@@ -1,454 +1,351 @@
-// app/api/chat/route.js
+// app/api/ai/[station_id]/route.js
 
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
 import User from "@/models/user";
-import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 import Groq from "groq-sdk";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const cache = new Map();
+const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
-// Session store to maintain conversation context
-const sessions = new Map();
-const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
+const getCacheKey = (station_id, role, userId) => `${station_id}:${role}:${userId || "anon"}`;
 
-function getSession(sessionId) {
-  const session = sessions.get(sessionId);
-  if (session && Date.now() - session.lastAccess < SESSION_TTL) {
-    session.lastAccess = Date.now();
-    return session;
-  }
-  sessions.delete(sessionId);
-  return null;
-}
-
-function createSession(sessionId, stationData, userProfile = null) {
-  const session = {
-    stationData,
-    userProfile,
-    conversationHistory: [],
-    lastAccess: Date.now(),
-  };
-  sessions.set(sessionId, session);
-  return session;
-}
-
-async function fetchStationData(station_id) {
-  await dbConnect();
-
-  const station = await Station.findOne({ station_id }).lean();
-  if (!station) return null;
-
-  const waterStatus = analyzeWaterStatus(station);
-
-  const latestYear = Object.keys(station.historical_water_levels || {})
-    .map(Number)
-    .sort((a, b) => b - a)[0];
-  const current_levels = station.historical_water_levels?.[latestYear] || {};
-
-  const quality = await mongoose.connection.collection("water-quality").findOne({ station_id });
-  const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
-
-  const levels = Object.values(current_levels).filter(Boolean);
-  const avg_level = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0;
-
-  let water_level_status = "safe";
-  if (avg_level < 3.5) water_level_status = "critical";
-  else if (avg_level < 4) water_level_status = "low";
-
-  return {
-    station_id: station.station_id || station_id,
-    station_name: station.station_name || station.name || "Unknown Station",
-    district: station.district || station.location?.district || "Unknown District",
-    state: station.state || station.location?.state || "Unknown State",
-    location: station.location,
-    avg_water_level: avg_level.toFixed(2),
-    water_level_status,
-    current_levels,
-    historical_data: station.historical_water_levels,
-    extraction_infrastructure: station.extraction_infrastructure,
-    water_quality: quality,
-    water_usage: usage,
-    waterStatus,
-  };
-}
-
-async function fetchUserProfile(userId) {
-  console.log("\n👤 [Chat] ========== FETCHING USER PROFILE ==========");
-  console.log("🆔 [Chat] User ID:", userId);
-  
-  await dbConnect();
-  
-  const user = await User.findById(userId).select('-password').lean();
-  
-  if (!user) {
-    console.log("❌ [Chat] User NOT found in database");
-    return null;
-  }
-  
-  console.log("✅ [Chat] User found in database");
-  console.log("📧 [Chat] Email:", user.email);
-  console.log("👤 [Chat] Role:", user.role);
-  console.log("📋 [Chat] Full user object:", JSON.stringify(user, null, 2));
-  
-  if (user.farmingProfile) {
-    console.log("✅ [Chat] Farming profile EXISTS!");
-    console.log("🌾 [Chat] Crops:", user.farmingProfile.crops);
-    console.log("🐄 [Chat] Livestock:", user.farmingProfile.livestock);
-    console.log("📏 [Chat] Land Area:", user.farmingProfile.landAreaAcres, "acres");
-    console.log("💧 [Chat] Irrigation:", user.farmingProfile.irrigationMethod);
-    console.log("🚜 [Chat] Complete farming profile:", JSON.stringify(user.farmingProfile, null, 2));
-  } else {
-    console.log("⚠️  [Chat] NO farming profile found");
-    console.log("⚠️  [Chat] farmingProfile field:", user.farmingProfile);
-  }
-  
-  console.log("========================================\n");
-  
-  return user;
-}
-
-function buildContextPrompt(stationData, userRole, userProfile = null) {
-  const isUser = ["farmer", "normal citizen"].includes(userRole);
-  const isPlanner = ["decision maker", "ground water researcher"].includes(userRole);
-
-  let context = `You are a water management assistant for groundwater station monitoring in India. 
-
-STATION INFORMATION:
-- Station ID: ${stationData.station_id}
-- Station Name: ${stationData.station_name}
-- District: ${stationData.district}, ${stationData.state}
-- Location: ${stationData.location?.coordinates ? `${stationData.location.coordinates[1]}, ${stationData.location.coordinates[0]}` : 'N/A'}
-- Current Average Water Level: ${stationData.avg_water_level} meters
-- Water Status: ${stationData.water_level_status}
-
-WATER LEVEL DATA:
-${JSON.stringify(stationData.current_levels, null, 2)}
-
-EXTRACTION INFRASTRUCTURE:
-${JSON.stringify(stationData.extraction_infrastructure, null, 2)}
-
-WATER QUALITY:
-${JSON.stringify(stationData.water_quality, null, 2)}
-
-WATER USAGE:
-${JSON.stringify(stationData.water_usage, null, 2)}
-
-`;
-
-  // Add user profile context if available
-  if (userProfile && userProfile.farmingProfile) {
-    const fp = userProfile.farmingProfile;
-    context += `
-USER'S FARMING PROFILE:
-- Current Crops: ${fp.crops && fp.crops.length > 0 ? fp.crops.join(", ") : "None specified"}
-- Livestock: ${fp.livestock && fp.livestock.length > 0 ? fp.livestock.join(", ") : "None specified"}
-- Land Area: ${fp.landAreaAcres ? `${fp.landAreaAcres} acres` : "Not specified"}
-- Irrigation Method: ${fp.irrigationMethod || "Not specified"}
-
-IMPORTANT: Use this farming profile to provide PERSONALIZED advice:
-- Recommend water conservation techniques suitable for their specific crops and livestock
-- Suggest irrigation scheduling based on their current irrigation method
-- Provide crop-specific water requirements for their crops: ${fp.crops?.join(", ") || "various crops"}
-- Calculate water needs for their specific livestock: ${fp.livestock?.join(", ") || "various animals"}
-- Tailor all recommendations to their ${fp.landAreaAcres || "farm"} size and ${fp.irrigationMethod || "current"} irrigation system
-`;
-  }
-
-  if (isUser) {
-    context += `
-USER ROLE: ${userRole}
-You should provide practical advice for:
-- Water conservation techniques ${userProfile?.farmingProfile?.crops ? `specifically for ${userProfile.farmingProfile.crops.join(", ")}` : ""}
-- Crop selection based on water availability ${userProfile?.farmingProfile?.landAreaAcres ? `for ${userProfile.farmingProfile.landAreaAcres} acres` : ""}
-- Household water management
-- Livestock water requirements ${userProfile?.farmingProfile?.livestock ? `for ${userProfile.farmingProfile.livestock.join(", ")}` : ""}
-- Water quality concerns and solutions
-- Irrigation optimization ${userProfile?.farmingProfile?.irrigationMethod ? `for ${userProfile.farmingProfile.irrigationMethod} irrigation` : ""}
-`;
-  }
-
-  if (isPlanner) {
-    context += `
-USER ROLE: ${userRole}
-You should provide strategic insights for:
-- Policy recommendations
-- Infrastructure projects
-- Recharge interventions
-- Industrial regulation
-- Long-term water planning
-- Budget allocation suggestions
-`;
-  }
-
-  if (!isUser && !isPlanner) {
-    context += `
-USER ROLE: General Public
-Provide balanced information suitable for general public without technical jargon.
-`;
-  }
-
-  context += `
-Answer questions concisely and accurately. Keep responses brief (2-4 sentences max) unless the user asks for detailed information.
-Use bullet points only when listing multiple items.
-Be direct and to the point - no lengthy explanations unless asked.
-Use Indian context (liters, meters, etc.) and local terminology when relevant.
-${userProfile?.farmingProfile ? "Always reference the user's specific crops, livestock, and farming practices when giving advice." : ""}`;
-
-  return context;
-}
-
-async function handleChatRequest(req) {
+export async function GET(req, context) {
   try {
-    console.log("\n💬 [Chat] ========== NEW CHAT REQUEST ==========");
-    
-    const body = await req.json();
-    const { message, sessionId, station_id } = body;
+    const { params } = context;
+    const { station_id } = await params;
 
-    console.log("📨 [Chat] Message:", message);
-    console.log("🔑 [Chat] Session ID:", sessionId);
-    console.log("🏢 [Chat] Station ID:", station_id);
+    console.log("\n🚀 [AI Recommendations] ========== NEW REQUEST ==========");
+    console.log("🏢 Station ID:", station_id);
 
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    if (!station_id) {
+      return NextResponse.json({ error: "station_id is required" }, { status: 400 });
     }
 
-    if (!sessionId) {
-      return NextResponse.json({ error: "Session ID is required" }, { status: 400 });
-    }
-
-    // Get user info from JWT token
-    let userRole = null;
+    // ============ STEP 1: AUTHENTICATE USER ============
     let userId = null;
+    let role = "normal citizen";
     let userProfile = null;
-    
+
     const auth = req.headers.get("authorization");
-    console.log("\n🔐 [Chat] Authorization header present:", !!auth);
+    console.log("🔐 Auth header present:", !!auth);
+
+    if (!auth?.startsWith("Bearer ")) {
+      console.log("❌ No valid authorization header");
+      return NextResponse.json({ error: "Login required. Please provide a valid token." }, { status: 401 });
+    }
+
+    try {
+      const token = auth.slice(7);
+      const decoded = jwt.verify(token, JWT_SECRET);
+      userId = decoded.userId || decoded.id;
+      role = (decoded.role || "normal citizen").toLowerCase();
+      
+      console.log("✅ Token verified");
+      console.log("👤 User ID:", userId);
+      console.log("🎭 Role:", role);
+    } catch (e) {
+      console.log("❌ Invalid token:", e.message);
+      return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
+    }
+
+    // ============ STEP 2: CHECK CACHE ============
+    const cacheKey = getCacheKey(station_id, role, userId);
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      console.log("⚡ Returning cached response");
+      return NextResponse.json(cached.data);
+    }
+
+    // ============ STEP 3: FETCH USER DATA ============
+    await dbConnect();
     
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = auth.slice(7);
-        const decoded = jwt.verify(token, JWT_SECRET);
-        
-        // FIXED: Use the correct field from decoded token
-        userId = decoded.userId || decoded.id;
-        userRole = decoded.role?.toLowerCase();
-        
-        console.log("✅ [Chat] Token decoded successfully");
-        console.log("🆔 [Chat] Decoded userId:", userId);
-        console.log("👤 [Chat] Decoded role:", userRole);
-        console.log("📋 [Chat] Full decoded token:", JSON.stringify(decoded, null, 2));
-        
-        // Fetch full user profile including farming data
-        if (userId) {
-          console.log("\n🚜 [Chat] Fetching user profile...");
-          userProfile = await fetchUserProfile(userId);
-          
-          if (userProfile) {
-            console.log("✅ [Chat] User profile fetched successfully");
-          } else {
-            console.log("⚠️  [Chat] User profile not found");
-          }
-        } else {
-          console.log("⚠️  [Chat] No userId in decoded token");
-        }
-      } catch (e) {
-        console.log("❌ [Chat] Token verification failed:", e.message);
-        console.log("Invalid/expired token → public mode");
-      }
+    console.log("📥 Fetching user from database...");
+    const user = await User.findById(userId).select("role farmingProfile email").lean();
+    
+    if (!user) {
+      console.log("❌ User not found in database");
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    
+    console.log("✅ User found:", user.email);
+    if (user.farmingProfile) {
+      console.log("🌾 Farming profile exists");
+      console.log("   - Crops:", user.farmingProfile.crops);
+      console.log("   - Livestock:", user.farmingProfile.livestock);
+      console.log("   - Land:", user.farmingProfile.landAreaAcres, "acres");
+      console.log("   - Irrigation:", user.farmingProfile.irrigationMethod);
+      userProfile = user.farmingProfile;
     } else {
-      console.log("ℹ️  [Chat] No authorization header - anonymous user");
+      console.log("ℹ️  No farming profile");
     }
 
-    // Check if session exists
-    let session = getSession(sessionId);
-
-    // If no session or station_id provided, check if user is providing station_id
-    if (!session) {
-      if (!station_id) {
-        // First message - ask for station ID
-        const greeting = userProfile?.farmingProfile 
-          ? `👋 Hi! I'm your **personalized water management assistant**.\n\nI see you grow ${userProfile.farmingProfile.crops?.join(", ") || "crops"}${userProfile.farmingProfile.livestock?.length > 0 ? ` and raise ${userProfile.farmingProfile.livestock.join(", ")}` : ""}. I'll provide advice tailored to your farm!\n\nPlease provide a **station ID** to get started.`
-          : "👋 Hi! I'm your **water management assistant**.\n\nPlease provide a **station ID** to get started.";
-        
-        console.log("📤 [Chat] Sending greeting (no station ID yet)");
-        
-        return NextResponse.json({
-          reply: greeting,
-          needsStationId: true,
-        });
-      }
-
-      // Fetch station data
-      console.log("\n🏢 [Chat] Fetching station data for:", station_id);
-      const stationData = await fetchStationData(station_id);
-      
-      if (!stationData) {
-        console.log("❌ [Chat] Station not found:", station_id);
-        return NextResponse.json({
-          error: `Station with ID '${station_id}' not found. Please check the station ID and try again.`,
-          needsStationId: true,
-        }, { status: 404 });
-      }
-
-      console.log("✅ [Chat] Station data fetched successfully");
-
-      // Create new session with station data and user profile
-      console.log("\n💾 [Chat] Creating new session...");
-      console.log("🏢 [Chat] Session station:", stationData.station_id);
-      console.log("👤 [Chat] Session user profile:", userProfile ? "YES" : "NO");
-      
-      if (userProfile?.farmingProfile) {
-        console.log("🌾 [Chat] Session will include farming profile:");
-        console.log("   - Crops:", userProfile.farmingProfile.crops);
-        console.log("   - Livestock:", userProfile.farmingProfile.livestock);
-        console.log("   - Land:", userProfile.farmingProfile.landAreaAcres, "acres");
-        console.log("   - Irrigation:", userProfile.farmingProfile.irrigationMethod);
-      }
-      
-      session = createSession(sessionId, stationData, userProfile);
-
-      // Welcome message - personalized if profile exists
-      const stationName = stationData.station_name !== "Unknown Station" 
-        ? stationData.station_name 
-        : `Station ${stationData.station_id}`;
-      
-      const locationText = stationData.district !== "Unknown District" 
-        ? ` in ${stationData.district}, ${stationData.state}` 
-        : "";
-      
-      let welcomeMsg = `✅ **Loaded: ${stationName}**${locationText}\n\n**Status:** ${stationData.water_level_status.toUpperCase()} ✓\n**Water Level:** ${stationData.avg_water_level}m\n\n`;
-      
-      if (userProfile?.farmingProfile) {
-        const fp = userProfile.farmingProfile;
-        if (fp.crops?.length > 0 || fp.livestock?.length > 0) {
-          welcomeMsg += `🌾 **Your Profile:** ${fp.crops?.join(", ") || ""}${fp.crops?.length > 0 && fp.livestock?.length > 0 ? " + " : ""}${fp.livestock?.join(", ") || ""}\n\n`;
-        }
-      }
-      
-      welcomeMsg += "Ask me anything about this station!";
-      
-      console.log("📤 [Chat] Sending welcome message");
-      
-      return NextResponse.json({
-        reply: welcomeMsg,
-        stationData: {
-          station_id: stationData.station_id,
-          station_name: stationData.station_name,
-          district: stationData.district,
-          state: stationData.state,
-          water_level_status: stationData.water_level_status,
-        },
-        userProfile: userProfile?.farmingProfile ? {
-          crops: userProfile.farmingProfile.crops || [],
-          livestock: userProfile.farmingProfile.livestock || [],
-          landAreaAcres: userProfile.farmingProfile.landAreaAcres,
-          irrigationMethod: userProfile.farmingProfile.irrigationMethod,
-        } : null,
-      });
-    }
-
-    // Session exists - process the chat message
-    console.log("\n🤖 [Chat] Processing message with existing session...");
-    console.log("📚 [Chat] Conversation history length:", session.conversationHistory.length);
+    // ============ STEP 4: FETCH STATION DATA ============
+    console.log("📥 Fetching station data...");
+    const station = await Station.findOne({ station_id }).lean();
     
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-    // Build context for AI with user profile
-    const systemContext = buildContextPrompt(
-      session.stationData, 
-      userRole, 
-      session.userProfile
-    );
-
-    // Add user message to conversation history
-    session.conversationHistory.push({
-      role: "user",
-      content: message,
-    });
-
-    // Keep only last 10 messages to avoid token limits
-    if (session.conversationHistory.length > 10) {
-      session.conversationHistory = session.conversationHistory.slice(-10);
+    if (!station) {
+      console.log("❌ Station not found");
+      return NextResponse.json({ error: "Station not found" }, { status: 404 });
     }
+    
+    console.log("✅ Station found:", station.station_name);
 
-    // Create messages array for Groq
-    const messages = [
-      { role: "system", content: systemContext },
-      ...session.conversationHistory,
-    ];
+    // ============ STEP 5: FETCH WATER QUALITY & USAGE ============
+    console.log("📥 Fetching water quality and usage data...");
+    const quality = await mongoose.connection.collection("water-quality").findOne({ station_id });
+    const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
+    
+    console.log("💧 Quality data:", quality ? "Found" : "Not found");
+    console.log("📊 Usage data:", usage ? "Found" : "Not found");
 
-    console.log("🚀 [Chat] Calling Groq API...");
+    // ============ STEP 6: CALCULATE METRICS ============
+    const latestYear = Math.max(...Object.keys(station.historical_water_levels || {}).map(Number));
+    const currentLevels = station.historical_water_levels?.[latestYear] || {};
+    const levels = Object.values(currentLevels).filter(Boolean);
+    const avgLevel = levels.length ? (levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(2) : 0;
+
+    const waterStatus = avgLevel < 3.5 ? "critical" : avgLevel < 4 ? "low" : "safe";
+    const dailyLimitLiters = (station.extraction_infrastructure?.average_extraction_rate_m3_day || 22) * 1000;
+    const borewellCount = station.extraction_infrastructure?.borewell_count || 1;
+    const bucketsPerBorewell = (dailyLimitLiters / borewellCount / 20).toFixed(2);
+
+    console.log("📊 Calculated metrics:");
+    console.log("   - Water level:", avgLevel, "m");
+    console.log("   - Status:", waterStatus);
+    console.log("   - Daily limit:", dailyLimitLiters, "L");
+    console.log("   - Borewells:", borewellCount);
+
+    // ============ STEP 7: BUILD AI PROMPT ============
+    console.log("🤖 Building AI prompt...");
+    
+    const prompt = `You are a senior water management expert in India. Analyze this groundwater station and provide comprehensive, practical recommendations.
+
+STATION DETAILS:
+- Name: ${station.station_name || station_id}
+- Location: ${station.address?.district || "Unknown"}, ${station.address?.state || "Unknown"}
+- Water Level: ${avgLevel}m (Status: ${waterStatus.toUpperCase()})
+- Daily Extraction Capacity: ${dailyLimitLiters.toLocaleString()} liters
+- Borewells: ${borewellCount} (${bucketsPerBorewell} buckets of 20L each)
+
+WATER QUALITY DATA:
+${quality ? `- pH: ${quality.ph}
+- TDS: ${quality.tds} mg/L
+- Fluoride: ${quality.fluoride} mg/L
+- Nitrate: ${quality.nitrate} mg/L
+- Arsenic: ${quality.arsenic || 0} mg/L` : "- No quality data available"}
+
+WATER USAGE DATA:
+${usage ? `- Agriculture: ${usage.agriculture?.total_water_requirement_m3_year || 0} m³/year
+- Industrial: ${usage.industries?.total_usage_m3_year || 0} m³/year
+- Household: ${usage.domestic?.total_usage_m3_year || 0} m³/year` : "- No usage data available"}
+
+USER PROFILE:
+- Role: ${role}
+${userProfile ? `- Crops: ${userProfile.crops?.join(", ") || "Not specified"}
+- Livestock: ${userProfile.livestock?.join(", ") || "Not specified"}
+- Land Area: ${userProfile.landAreaAcres || "Not specified"} acres
+- Irrigation: ${userProfile.irrigationMethod || "Not specified"}` : "- No farming profile"}
+
+INSTRUCTIONS:
+Generate practical, actionable recommendations in valid JSON format. All recommendations MUST be:
+1. Specific to this station's actual water level (${waterStatus}) and quality
+2. Tailored to user's role (${role})
+${userProfile ? `3. Personalized for their crops (${userProfile.crops?.join(", ") || "various"}), livestock (${userProfile.livestock?.join(", ") || "none"}), and ${userProfile.landAreaAcres || "their"} acres farm` : "3. General but practical"}
+4. Include quantified benefits (liters saved, % reduction, cost savings)
+5. Suitable for Indian context (climate, resources, schemes)
+
+Return ONLY valid JSON (no markdown, no extra text):
+
+{
+  "overall_summary": {
+    "water_quality_status": "Analyze if water is safe/moderate/poor for drinking, irrigation, industrial use based on actual parameters. Be specific about which parameters are concerning.",
+    "water_availability_status": "Describe current water level situation, sustainability, and extraction capacity. Mention if it's critical, low, or adequate.",
+    "urgent_actions": ["List 3-4 most critical immediate actions based on ACTUAL water status and quality"]
+  },
+  "water_quality": {
+    "status": "Determine: safe, moderate, or poor",
+    "summary": "Brief assessment of water quality parameters",
+    "parameters_analysis": {
+      "ph": "Analyze actual pH value and implications",
+      "tds": "Analyze actual TDS and what it means",
+      "fluoride": "Analyze fluoride level and health risks",
+      "nitrate": "Analyze nitrate level and concerns",
+      "arsenic": "Analyze if arsenic is within safe limits"
+    },
+    "treatment_needed": ["List 4-5 specific treatment methods needed for THIS water quality"],
+    "safe_for": {
+      "drinking": "true/false based on parameters",
+      "irrigation": "true/false based on parameters",
+      "industrial": "true/false based on parameters"
+    }
+  },
+  "key_metrics": {
+    "daily_extraction_limit_liters": ${dailyLimitLiters},
+    "buckets_per_borewell": ${parseFloat(bucketsPerBorewell)},
+    "water_level_status": "${waterStatus}",
+    "average_water_level_m": ${parseFloat(avgLevel)},
+    "household_daily_requirement_liters": 150,
+    "agriculture_yearly_m3": ${usage?.agriculture?.total_water_requirement_m3_year || 0},
+    "industrial_yearly_m3": ${usage?.industries?.total_usage_m3_year || 0}
+  },
+  "household_water_usage": {
+    "daily_breakdown": {
+      "bathroom": {
+        "liters": "Provide typical daily liters (number)",
+        "percentage": "Calculate % of total (number)",
+        "activities": ["List 3-4 bathroom activities with consumption"]
+      },
+      "kitchen": {
+        "liters": "Provide typical daily liters (number)",
+        "percentage": "Calculate % (number)",
+        "activities": ["List 3-4 kitchen activities"]
+      },
+      "laundry": {
+        "liters": "Provide typical daily liters (number)",
+        "percentage": "Calculate % (number)",
+        "activities": ["List 2-3 laundry activities"]
+      },
+      "cleaning": {
+        "liters": "Provide typical daily liters (number)",
+        "percentage": "Calculate % (number)",
+        "activities": ["List 2-3 cleaning activities"]
+      },
+      "outdoor": {
+        "liters": "Provide typical daily liters (number)",
+        "percentage": "Calculate % (number)",
+        "activities": ["List 2-3 outdoor activities"]
+      }
+    },
+    "conservation_tips": {
+      "bathroom": ["5 specific bathroom water saving tips with quantified savings"],
+      "kitchen": ["5 kitchen water conservation tips"],
+      "laundry": ["5 laundry tips"],
+      "cleaning": ["4 cleaning tips"],
+      "outdoor": ["5 outdoor/garden tips"]
+    }
+  },
+  ${role === "farmer" || role === "normal citizen" ? `"farmer_recommendations": {
+    "crop_suggestions": ["Suggest 5 water-efficient crops suitable for ${station.address?.district || "this region"}, considering ${waterStatus} water status${userProfile?.crops ? ` - especially alternatives or complements to current crops: ${userProfile.crops.join(", ")}` : ""}"],
+    "irrigation_tips": ["5 irrigation optimization tips${userProfile?.irrigationMethod ? ` for ${userProfile.irrigationMethod} irrigation system` : ""}, considering ${waterStatus} water availability"],
+    "livestock_water_management": ["4 tips for efficient livestock water management${userProfile?.livestock?.length ? ` for ${userProfile.livestock.join(", ")}` : ""}"],
+    "farm_conservation": ["5 farm-specific water conservation techniques${userProfile?.landAreaAcres ? ` suitable for ${userProfile.landAreaAcres} acres` : ""}"],
+    "government_schemes": ["List 3-4 relevant Indian government schemes with brief benefits and eligibility"],
+    "immediate_actions": ["5 urgent steps farmers should take given ${waterStatus} water status"]
+  },` : ""}
+  ${role === "decision maker" || role === "ground water researcher" || role === "town planner" ? `"policy_recommendations": {
+    "executive_summary": "2-3 sentence summary of water situation requiring policy intervention",
+    "immediate_actions": ["5 urgent policy/regulatory actions needed for ${waterStatus} water level and current quality"],
+    "short_term_6months": ["4 initiatives for next 6 months"],
+    "medium_term_2years": ["4 projects for 1-2 years"],
+    "long_term_5years": ["3 strategic long-term plans"],
+    "infrastructure_needs": ["4 critical infrastructure projects needed"],
+    "funding_sources": ["List 5 Indian government schemes/funding sources for water projects"],
+    "monitoring_requirements": ["4 monitoring and compliance measures"]
+  },` : ""}
+  "general_recommendations": {
+    "water_conservation": ["5 general water conservation tips for everyone"],
+    "community_initiatives": ["4 community-level actions"],
+    "technology_solutions": ["4 modern tech solutions accessible in India"],
+    "cost_saving_measures": ["4 measures with estimated savings/ROI"]
+  },
+  "seasonal_advice": {
+    "monsoon": ["3 monsoon-specific actions"],
+    "summer": ["3 summer water management tips"],
+    "winter": ["3 winter preparations"]
+  },
+  "metadata": {
+    "generated_at": "${new Date().toISOString()}",
+    "station_id": "${station_id}",
+    "user_role": "${role}",
+    "has_farming_profile": ${!!userProfile},
+    "data_completeness": "${quality && usage ? "complete" : quality ? "partial_quality_only" : usage ? "partial_usage_only" : "minimal"}"
+  }
+}
+
+CRITICAL RULES:
+- Return ONLY the JSON object, no markdown, no backticks, no extra text
+- All strings must be properly formatted (no line breaks inside strings)
+- All numbers must be unquoted
+- Use realistic Indian values and context
+- Be specific to the actual water situation (${waterStatus} level, quality parameters)
+- Tailor to user's profile and role`;
+
+    // ============ STEP 8: CALL GROQ AI ============
+    console.log("🚀 Calling Groq AI...");
+    
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
-      messages,
-      temperature: 0.7,
-      max_tokens: 1000,
+      messages: [
+        {
+          role: "system",
+          content: "You are a water management expert. Return ONLY valid JSON. No markdown, no backticks, no extra text."
+        },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.6,
+      max_tokens: 4500,
+      response_format: { type: "json_object" }
     });
 
-    const reply = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
+    let raw = completion.choices[0]?.message?.content?.trim() || "{}";
+    console.log("✅ AI response received, length:", raw.length);
 
-    console.log("✅ [Chat] Response generated, length:", reply.length, "chars");
+    // ============ STEP 9: PARSE AI RESPONSE ============
+    raw = raw.replace(/```json|```/g, "").replace(/\\n/g, " ").trim();
 
-    // Add assistant reply to conversation history
-    session.conversationHistory.push({
-      role: "assistant",
-      content: reply,
-    });
+    let data;
+    try {
+      data = JSON.parse(raw);
+      console.log("✅ JSON parsed successfully");
+    } catch (parseError) {
+      console.error("❌ JSON Parse Error:", parseError.message);
+      
+      // Fallback response
+      data = {
+        error: "AI generated invalid response",
+        overall_summary: {
+          water_quality_status: quality ? `Water quality requires attention. Key parameters: pH ${quality.ph}, TDS ${quality.tds}, Fluoride ${quality.fluoride}, Nitrate ${quality.nitrate}` : "No quality data available",
+          water_availability_status: `Water level at ${avgLevel}m is ${waterStatus}. Daily extraction capacity: ${dailyLimitLiters.toLocaleString()} liters across ${borewellCount} borewells.`,
+          urgent_actions: [
+            "Conduct comprehensive water quality testing",
+            "Implement water conservation measures immediately",
+            "Monitor extraction rates to prevent over-exploitation"
+          ]
+        },
+        key_metrics: {
+          daily_extraction_limit_liters: dailyLimitLiters,
+          buckets_per_borewell: parseFloat(bucketsPerBorewell),
+          water_level_status: waterStatus,
+          average_water_level_m: parseFloat(avgLevel),
+          household_daily_requirement_liters: 150,
+          agriculture_yearly_m3: usage?.agriculture?.total_water_requirement_m3_year || 0,
+          industrial_yearly_m3: usage?.industries?.total_usage_m3_year || 0
+        }
+      };
+    }
 
-    console.log("📤 [Chat] Sending response\n");
+    // ============ STEP 10: CACHE AND RETURN ============
+    cache.set(cacheKey, { data, ts: Date.now() });
+    console.log("💾 Response cached");
+    console.log("========================================\n");
 
-    return NextResponse.json({
-      reply,
-      stationData: {
-        station_id: session.stationData.station_id,
-        station_name: session.stationData.station_name,
-        district: session.stationData.district,
-        state: session.stationData.state,
-      },
-    });
+    return NextResponse.json(data);
 
   } catch (error) {
-    console.error("❌ [Chat] Error:", error);
+    console.error("❌ [AI Recommendations] Error:", error);
     console.error(error.stack);
     return NextResponse.json(
-      { error: "Failed to process chat message", details: error.message },
+      { 
+        error: "Failed to generate recommendations", 
+        details: error.message 
+      }, 
       { status: 500 }
     );
   }
-}
-
-// Export POST handler
-export async function POST(req) {
-  return handleChatRequest(req);
-}
-
-// Optional: GET endpoint to check session status
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get("sessionId");
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "Session ID required" }, { status: 400 });
-  }
-
-  const session = getSession(sessionId);
-  if (!session) {
-    return NextResponse.json({ active: false, message: "No active session" });
-  }
-
-  return NextResponse.json({
-    active: true,
-    stationData: {
-      station_id: session.stationData.station_id,
-      station_name: session.stationData.station_name,
-      district: session.stationData.district,
-      state: session.stationData.state,
-    },
-    userProfile: session.userProfile?.farmingProfile || null,
-    messageCount: session.conversationHistory.length,
-  });
 }
