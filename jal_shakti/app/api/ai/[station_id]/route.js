@@ -94,14 +94,14 @@ export async function GET(req, context) {
       return NextResponse.json({ error: "Station not found" }, { status: 404 });
     }
     
-    console.log("✅ Station found:", station.station_name);
+    console.log("✅ Station found:", station.address.state);
 
     // ============ STEP 5: FETCH WATER QUALITY & USAGE ============
     console.log("📥 Fetching water quality and usage data...");
     
     const qualityDoc = await mongoose.connection.collection("water-quality").findOne({ station_id });
     const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
-    
+    console.log(qualityDoc);
     // Extract quality data from nested structure (similar to by-id route)
     let quality = null;
     if (qualityDoc?.water_quality) {
@@ -116,6 +116,8 @@ export async function GET(req, context) {
         total_hardness: qualityDoc.water_quality.total_hardness_mgL,
         year: qualityDoc.water_quality.year
       };
+
+      
     } else {
       // Use safe dummy values if no quality data exists
       console.log("⚠️  No quality data found - using safe dummy values");
@@ -204,15 +206,16 @@ Return ONLY valid JSON (no markdown, no extra text):
     "urgent_actions": ["List 3-4 most critical immediate actions based on water level being ${waterStatus} and the specific quality parameters provided"]
   },
   "water_quality": {
-    "status": "Based on parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}), classify as: safe, moderate, or poor",
-    "summary": "Brief assessment: All parameters are within/outside safe limits. Be specific.",
+    "status": "Based on parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}), water quality is classified as: ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01 ? 'safe' : (quality.tds > 2000 || quality.fluoride > 1.5 || quality.nitrate > 45 || quality.arsenic > 0.01) ? 'poor' : 'moderate'}",
+    "summary": "Brief assessment: ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01 ? 'All parameters are within safe limits.' : 'Some parameters are outside safe limits.'} ${quality.tds > 2000 ? 'TDS exceeds safe limit. ' : ''}${quality.fluoride > 1.5 ? 'Fluoride exceeds safe limit. ' : ''}${quality.nitrate > 45 ? 'Nitrate exceeds safe limit. ' : ''}${quality.arsenic > 0.01 ? 'Arsenic exceeds safe limit. ' : ''}",
     "parameters_analysis": {
-      "ph": "pH is ${quality.ph}. This is ${quality.ph >= 6.5 && quality.ph <= 8.5 ? "within safe range (6.5-8.5)" : "outside safe range"}. Impact: [explain]",
-      "tds": "TDS is ${quality.tds} mg/L. This is ${quality.tds <= 2000 ? "within safe limit (2000)" : "above safe limit"}. Impact: [explain]",
-      "fluoride": "Fluoride is ${quality.fluoride} mg/L. This is ${quality.fluoride <= 1.5 ? "within safe limit (1.5)" : "above safe limit"}. Impact: [explain]",
-      "nitrate": "Nitrate is ${quality.nitrate} mg/L. This is ${quality.nitrate <= 45 ? "within safe limit (45)" : "above safe limit"}. Impact: [explain]",
-      "arsenic": "Arsenic is ${quality.arsenic} mg/L. This is ${quality.arsenic <= 0.01 ? "within safe limit (0.01)" : "above safe limit"}. Impact: [explain]"
-    },
+      "ph": "${quality.ph}",
+      "tds": "${quality.tds}",
+      "fluoride": "${quality.fluoride}",
+      "nitrate": "${quality.nitrate}",
+      "arsenic": "${quality.arsenic}"
+    }
+},
     "treatment_needed": ["Based on the ACTUAL parameters above, list 4-5 specific treatments needed. If all parameters are safe, list general maintenance/monitoring recommendations"],
     "safe_for": {
       "drinking": ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01},
@@ -232,38 +235,27 @@ Return ONLY valid JSON (no markdown, no extra text):
   "household_water_usage": {
     "daily_breakdown": {
       "bathroom": {
-        "liters": "Provide typical daily liters (number)",
-        "percentage": "Calculate % of total (number)",
-        "activities": ["List 3-4 bathroom activities with consumption"]
+        "liters": "Provide typical daily liters as a number (e.g., 60)",
+        "percentage": "Calculate % of 150L total as a number (e.g., 40)"
       },
       "kitchen": {
-        "liters": "Provide typical daily liters (number)",
-        "percentage": "Calculate % (number)",
-        "activities": ["List 3-4 kitchen activities"]
+        "liters": "Provide typical daily liters as a number (e.g., 30)",
+        "percentage": "Calculate % of 150L total as a number (e.g., 20)"
       },
       "laundry": {
-        "liters": "Provide typical daily liters (number)",
-        "percentage": "Calculate % (number)",
-        "activities": ["List 2-3 laundry activities"]
+        "liters": "Provide typical daily liters as a number (e.g., 25)",
+        "percentage": "Calculate % of 150L total as a number (e.g., 17)"
       },
       "cleaning": {
-        "liters": "Provide typical daily liters (number)",
-        "percentage": "Calculate % (number)",
-        "activities": ["List 2-3 cleaning activities"]
+        "liters": "Provide typical daily liters as a number (e.g., 20)",
+        "percentage": "Calculate % of 150L total as a number (e.g., 13)"
       },
       "outdoor": {
-        "liters": "Provide typical daily liters (number)",
-        "percentage": "Calculate % (number)",
-        "activities": ["List 2-3 outdoor activities"]
+        "liters": "Provide typical daily liters as a number (e.g., 15)",
+        "percentage": "Calculate % of 150L total as a number (e.g., 10)"
       }
     },
-    "conservation_tips": {
-      "bathroom": ["5 specific bathroom water saving tips with quantified savings"],
-      "kitchen": ["5 kitchen water conservation tips"],
-      "laundry": ["5 laundry tips"],
-      "cleaning": ["4 cleaning tips"],
-      "outdoor": ["5 outdoor/garden tips"]
-    }
+    "conservation_tips": ["Provide exactly 5 general household water conservation tips with quantified savings. Examples: 'Fix leaky taps - saves 20L/day', 'Install low-flow showerheads - saves 30L/day', 'Collect RO waste water for plants - saves 15L/day', 'Use bucket instead of running tap while bathing - saves 50L/day', 'Reuse vegetable washing water for gardening - saves 10L/day'"]
   },
   ${role === "farmer" || role === "normal citizen" ? `"farmer_recommendations": {
     "crop_suggestions": ["Suggest 5 water-efficient crops suitable for ${station.address?.district || "this region"}, considering ${waterStatus} water status${userProfile?.crops ? ` - especially alternatives or complements to current crops: ${userProfile.crops.join(", ")}` : ""}"],
