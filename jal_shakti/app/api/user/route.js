@@ -83,8 +83,8 @@ export async function PUT(req) {
       { new: true }
     );
 
-    console.log("✅ [PUT /api/user] Profile updated for user:", decoded.userId);
-    console.log("🚜 [PUT /api/user] Updated Farming Profile:", JSON.stringify(updatedUser.farmingProfile, null, 2));
+    console.log(" [PUT /api/user] Profile updated for user:", decoded.userId);
+    console.log(" [PUT /api/user] Updated Farming Profile:", JSON.stringify(updatedUser.farmingProfile, null, 2));
 
     return NextResponse.json({
       message: "Farming profile saved successfully",
