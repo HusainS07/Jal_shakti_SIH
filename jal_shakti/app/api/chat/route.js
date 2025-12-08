@@ -54,8 +54,9 @@ async function fetchStationData(station_id) {
   const avg_level = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0;
 
   let water_level_status = "safe";
-  if (avg_level < 3.5) water_level_status = "critical";
-  else if (avg_level < 4) water_level_status = "low";
+  if (avg_level <= 30) water_level_status = "safe";
+  else if (avg_level <= 45) water_level_status = "alert";
+  else water_level_status = "critical";
 
   return {
     station_id: station.station_id,
@@ -86,7 +87,7 @@ STATION INFORMATION:
 - Station ID: ${stationData.station_id}
 - Location: ${stationData.village}, ${stationData.block}, ${stationData.district}, ${stationData.state}
 - Coordinates: ${stationData.location?.coordinates ? `${stationData.location.coordinates[1]}, ${stationData.location.coordinates[0]}` : 'N/A'}
-- Current Average Water Level: ${stationData.avg_water_level} meters
+- Current Average Water Level: ${stationData.avg_water_level} meters below groundlevel
 - Water Status: ${stationData.water_level_status}
 
 WATER LEVEL DATA:
