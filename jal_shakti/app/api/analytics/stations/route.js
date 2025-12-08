@@ -12,7 +12,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
-    const limit = parseInt(searchParams.get("limit")) || 50;
+    const limit = parseInt(searchParams.get("limit")) || 5;
 
     console.log(`Search query: "${search}" | Limit: ${limit}`);
 
