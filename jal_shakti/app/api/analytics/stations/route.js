@@ -21,8 +21,10 @@ export async function GET(request) {
     if (search) {
       query.$or = [
         { station_id: { $regex: search, $options: "i" } },
+        { "address.state": { $regex: search, $options: "i" } },
         { "address.village": { $regex: search, $options: "i" } },
         { "address.district": { $regex: search, $options: "i" } },
+        { "address.block" : { $regex: search, $options: "i" } },
       ];
     }
 
