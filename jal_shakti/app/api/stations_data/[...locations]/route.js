@@ -29,7 +29,7 @@ export async function GET(request, { params }) {
       location: {
         $near: {
           $geometry: { type: "Point", coordinates: [lon, lat] },
-          $maxDistance: 20000, // 🚀 20km radius (adjustable)
+          $maxDistance: 2000000, // 🚀 2000km radius (adjustable)
         },
       },
     }).limit(10);
