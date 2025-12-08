@@ -13,15 +13,38 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const cache = new Map();
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
-const getCacheKey = (station_id, role, userId) => `${station_id}:${role}:${userId || "anon"}`;
+// Language configurations
+const LANGUAGE_MAP = {
+  en: "English",
+  hi: "Hindi (हिंदी)",
+  ta: "Tamil (தமிழ்)",
+  te: "Telugu (తెలుగు)",
+  bn: "Bengali (বাংলা)",
+  mr: "Marathi (मराठी)",
+  gu: "Gujarati (ગુજરાતી)",
+  kn: "Kannada (ಕನ್ನಡ)",
+  ml: "Malayalam (മലയാളം)",
+  pa: "Punjabi (ਪੰਜਾਬੀ)",
+  or: "Odia (ଓଡ଼ିଆ)",
+  as: "Assamese (অসমীয়া)",
+};
+
+const getCacheKey = (station_id, role, userId, languageId) => 
+  `${station_id}:${role}:${userId || "anon"}:${languageId || "en"}`;
 
 export async function GET(req, context) {
   try {
     const { params } = context;
     const { station_id } = await params;
+    
+    // Get language from query parameters
+    const { searchParams } = new URL(req.url);
+    const languageId = searchParams.get("language_id") || "en";
+    const languageName = LANGUAGE_MAP[languageId] || "English";
 
     console.log("\n🚀 [AI Recommendations] ========== NEW REQUEST ==========");
     console.log("🏢 Station ID:", station_id);
+    console.log("🌐 Language:", languageName, `(${languageId})`);
 
     if (!station_id) {
       return NextResponse.json({ error: "station_id is required" }, { status: 400 });
@@ -55,7 +78,7 @@ export async function GET(req, context) {
     }
 
     // ============ STEP 2: CHECK CACHE ============
-    const cacheKey = getCacheKey(station_id, role, userId);
+    const cacheKey = getCacheKey(station_id, role, userId, languageId);
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
       console.log("⚡ Returning cached response");
@@ -101,25 +124,22 @@ export async function GET(req, context) {
     
     const qualityDoc = await mongoose.connection.collection("water-quality").findOne({ station_id });
     const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
-    console.log(qualityDoc);
-    // Extract quality data from nested structure (similar to by-id route)
+    
+    // Extract quality data from nested structure
     let quality = null;
     if (qualityDoc?.water_quality) {
       quality = {
         station_id,
         ph: qualityDoc.water_quality.ph || 7.2,
-        tds: qualityDoc.water_quality.total_hardness_mgL || 500, // Using hardness as proxy for TDS
+        tds: qualityDoc.water_quality.total_hardness_mgL || 500,
         ec: qualityDoc.water_quality.ec_uScm || 1000,
         fluoride: qualityDoc.water_quality.f_mgL || 0.8,
         nitrate: qualityDoc.water_quality.no3_mgL || 20,
-        arsenic: 0.005, // Default safe value
+        arsenic: 0.005,
         total_hardness: qualityDoc.water_quality.total_hardness_mgL,
         year: qualityDoc.water_quality.year
       };
-
-      
     } else {
-      // Use safe dummy values if no quality data exists
       console.log("⚠️  No quality data found - using safe dummy values");
       quality = {
         station_id,
@@ -133,10 +153,6 @@ export async function GET(req, context) {
     }
     
     console.log("💧 Quality data:", qualityDoc ? "Available" : "Using defaults");
-    console.log("   - pH:", quality.ph);
-    console.log("   - TDS/Hardness:", quality.tds);
-    console.log("   - Fluoride:", quality.fluoride);
-    console.log("   - Nitrate:", quality.nitrate);
     console.log("📊 Usage data:", usage ? "Found" : "Not found");
 
     // ============ STEP 6: CALCULATE METRICS ============
@@ -153,13 +169,18 @@ export async function GET(req, context) {
     console.log("📊 Calculated metrics:");
     console.log("   - Water level:", avgLevel, "m");
     console.log("   - Status:", waterStatus);
-    console.log("   - Daily limit:", dailyLimitLiters, "L");
-    console.log("   - Borewells:", borewellCount);
 
-    // ============ STEP 7: BUILD AI PROMPT ============
+    // ============ STEP 7: BUILD AI PROMPT WITH LANGUAGE INSTRUCTION ============
     console.log("🤖 Building AI prompt...");
     
     const prompt = `You are a senior water management expert in India. Analyze this groundwater station and provide comprehensive, practical recommendations.
+
+CRITICAL LANGUAGE REQUIREMENT:
+- You MUST respond in ${languageName} language ONLY
+- ALL text fields in the JSON response must be in ${languageName}
+- Field names (keys) remain in English, but all values must be in ${languageName}
+- This includes summaries, recommendations, tips, and all descriptive text
+- Do NOT use English or any other language for the content
 
 STATION DETAILS:
 - Name: ${station.station_name || station_id}
@@ -190,33 +211,33 @@ ${userProfile ? `- Crops: ${userProfile.crops?.join(", ") || "Not specified"}
 - Irrigation: ${userProfile.irrigationMethod || "Not specified"}` : "- No farming profile"}
 
 INSTRUCTIONS:
-Generate practical, actionable recommendations in valid JSON format. Water quality data is provided (may include default safe values if actual data was unavailable). All recommendations MUST be:
+Generate practical, actionable recommendations in valid JSON format. ALL TEXT CONTENT MUST BE IN ${languageName}. Water quality data is provided (may include default safe values if actual data was unavailable). All recommendations MUST be:
 1. Specific to this station's actual water level (${waterStatus}) and quality
 2. Tailored to user's role (${role})
 ${userProfile ? `3. Personalized for their crops (${userProfile.crops?.join(", ") || "various"}), livestock (${userProfile.livestock?.join(", ") || "none"}), and ${userProfile.landAreaAcres || "their"} acres farm` : "3. General but practical"}
 4. Include quantified benefits (liters saved, % reduction, cost savings)
 5. Suitable for Indian context (climate, resources, schemes)
+6. Written ENTIRELY in ${languageName} language
 
-Return ONLY valid JSON (no markdown, no extra text):
+Return ONLY valid JSON (no markdown, no extra text). JSON structure with English keys but ${languageName} values:
 
 {
   "overall_summary": {
-    "water_quality_status": "Analyze if water is safe/moderate/poor for drinking, irrigation, industrial use. Based on the provided parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}, Arsenic: ${quality.arsenic}), determine safety. DO NOT mention 'undefined' - use the actual numeric values provided.",
-    "water_availability_status": "Describe current water level (${avgLevel}m = ${waterStatus} status), sustainability, and extraction capacity (${dailyLimitLiters} L/day). Be specific about whether this is adequate or concerning.",
-    "urgent_actions": ["List 3-4 most critical immediate actions based on water level being ${waterStatus} and the specific quality parameters provided"]
+    "water_quality_status": "Analyze in ${languageName} if water is safe/moderate/poor for drinking, irrigation, industrial use. Based on the provided parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}, Arsenic: ${quality.arsenic}), determine safety. DO NOT mention 'undefined' - use the actual numeric values provided.",
+    "water_availability_status": "Describe in ${languageName} current water level (${avgLevel}m = ${waterStatus} status), sustainability, and extraction capacity (${dailyLimitLiters} L/day). Be specific about whether this is adequate or concerning.",
+    "urgent_actions": ["List in ${languageName} 3-4 most critical immediate actions based on water level being ${waterStatus} and the specific quality parameters provided"]
   },
   "water_quality": {
-    "status": "Based on parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}), water quality is classified as: ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01 ? 'safe' : (quality.tds > 2000 || quality.fluoride > 1.5 || quality.nitrate > 45 || quality.arsenic > 0.01) ? 'poor' : 'moderate'}",
-    "summary": "Brief assessment: ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01 ? 'All parameters are within safe limits.' : 'Some parameters are outside safe limits.'} ${quality.tds > 2000 ? 'TDS exceeds safe limit. ' : ''}${quality.fluoride > 1.5 ? 'Fluoride exceeds safe limit. ' : ''}${quality.nitrate > 45 ? 'Nitrate exceeds safe limit. ' : ''}${quality.arsenic > 0.01 ? 'Arsenic exceeds safe limit. ' : ''}",
+    "status": "safe/moderate/poor in ${languageName}",
+    "summary": "Brief assessment in ${languageName}",
     "parameters_analysis": {
       "ph": "${quality.ph}",
       "tds": "${quality.tds}",
       "fluoride": "${quality.fluoride}",
       "nitrate": "${quality.nitrate}",
       "arsenic": "${quality.arsenic}"
-    }
-},
-    "treatment_needed": ["Based on the ACTUAL parameters above, list 4-5 specific treatments needed. If all parameters are safe, list general maintenance/monitoring recommendations"],
+    },
+    "treatment_needed": ["List in ${languageName} 4-5 specific treatments needed based on ACTUAL parameters"],
     "safe_for": {
       "drinking": ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01},
       "irrigation": ${quality.arsenic <= 0.01 && quality.tds <= 3000},
@@ -235,61 +256,63 @@ Return ONLY valid JSON (no markdown, no extra text):
   "household_water_usage": {
     "daily_breakdown": {
       "bathroom": {
-        "liters": "Provide typical daily liters as a number (e.g., 60)",
-        "percentage": "Calculate % of 150L total as a number (e.g., 40)"
+        "liters": 60,
+        "percentage": 40
       },
       "kitchen": {
-        "liters": "Provide typical daily liters as a number (e.g., 30)",
-        "percentage": "Calculate % of 150L total as a number (e.g., 20)"
+        "liters": 30,
+        "percentage": 20
       },
       "laundry": {
-        "liters": "Provide typical daily liters as a number (e.g., 25)",
-        "percentage": "Calculate % of 150L total as a number (e.g., 17)"
+        "liters": 25,
+        "percentage": 17
       },
       "cleaning": {
-        "liters": "Provide typical daily liters as a number (e.g., 20)",
-        "percentage": "Calculate % of 150L total as a number (e.g., 13)"
+        "liters": 20,
+        "percentage": 13
       },
       "outdoor": {
-        "liters": "Provide typical daily liters as a number (e.g., 15)",
-        "percentage": "Calculate % of 150L total as a number (e.g., 10)"
+        "liters": 15,
+        "percentage": 10
       }
     },
-    "conservation_tips": ["Provide exactly 5 general household water conservation tips with quantified savings. Examples: 'Fix leaky taps - saves 20L/day', 'Install low-flow showerheads - saves 30L/day', 'Collect RO waste water for plants - saves 15L/day', 'Use bucket instead of running tap while bathing - saves 50L/day', 'Reuse vegetable washing water for gardening - saves 10L/day'"]
+    "conservation_tips": ["Provide in ${languageName} exactly 5 household water conservation tips with quantified savings"]
   },
   ${role === "farmer" || role === "normal citizen" ? `"farmer_recommendations": {
-    "crop_suggestions": ["Suggest 5 water-efficient crops suitable for ${station.address?.district || "this region"}, considering ${waterStatus} water status${userProfile?.crops ? ` - especially alternatives or complements to current crops: ${userProfile.crops.join(", ")}` : ""}"],
-    "irrigation_tips": ["5 irrigation optimization tips${userProfile?.irrigationMethod ? ` for ${userProfile.irrigationMethod} irrigation system` : ""}, considering ${waterStatus} water availability"],
-    "livestock_water_management": ["4 tips for efficient livestock water management${userProfile?.livestock?.length ? ` for ${userProfile.livestock.join(", ")}` : ""}"],
-    "farm_conservation": ["5 farm-specific water conservation techniques${userProfile?.landAreaAcres ? ` suitable for ${userProfile.landAreaAcres} acres` : ""}"],
-    "government_schemes": ["List 3-4 relevant Indian government schemes with brief benefits and eligibility"],
-    "immediate_actions": ["5 urgent steps farmers should take given ${waterStatus} water status"]
+    "crop_suggestions": ["Suggest in ${languageName} 5 water-efficient crops suitable for ${station.address?.district || "this region"}"],
+    "irrigation_tips": ["Provide in ${languageName} 5 irrigation optimization tips"],
+    "livestock_water_management": ["Provide in ${languageName} 4 tips for efficient livestock water management"],
+    "farm_conservation": ["Provide in ${languageName} 5 farm-specific water conservation techniques"],
+    "government_schemes": ["List in ${languageName} 3-4 relevant Indian government schemes with brief benefits"],
+    "immediate_actions": ["Provide in ${languageName} 5 urgent steps farmers should take"]
   },` : ""}
   ${role === "decision maker" || role === "ground water researcher" || role === "town planner" ? `"policy_recommendations": {
-    "executive_summary": "2-3 sentence summary of water situation requiring policy intervention",
-    "immediate_actions": ["5 urgent policy/regulatory actions needed for ${waterStatus} water level and current quality"],
-    "short_term_6months": ["4 initiatives for next 6 months"],
-    "medium_term_2years": ["4 projects for 1-2 years"],
-    "long_term_5years": ["3 strategic long-term plans"],
-    "infrastructure_needs": ["4 critical infrastructure projects needed"],
-    "funding_sources": ["List 5 Indian government schemes/funding sources for water projects"],
-    "monitoring_requirements": ["4 monitoring and compliance measures"]
+    "executive_summary": "2-3 sentence summary in ${languageName}",
+    "immediate_actions": ["5 urgent policy actions in ${languageName}"],
+    "short_term_6months": ["4 initiatives in ${languageName}"],
+    "medium_term_2years": ["4 projects in ${languageName}"],
+    "long_term_5years": ["3 strategic plans in ${languageName}"],
+    "infrastructure_needs": ["4 critical projects in ${languageName}"],
+    "funding_sources": ["5 funding sources in ${languageName}"],
+    "monitoring_requirements": ["4 monitoring measures in ${languageName}"]
   },` : ""}
   "general_recommendations": {
-    "water_conservation": ["5 general water conservation tips for everyone"],
-    "community_initiatives": ["4 community-level actions"],
-    "technology_solutions": ["4 modern tech solutions accessible in India"],
-    "cost_saving_measures": ["4 measures with estimated savings/ROI"]
+    "water_conservation": ["5 tips in ${languageName}"],
+    "community_initiatives": ["4 actions in ${languageName}"],
+    "technology_solutions": ["4 solutions in ${languageName}"],
+    "cost_saving_measures": ["4 measures in ${languageName}"]
   },
   "seasonal_advice": {
-    "monsoon": ["3 monsoon-specific actions"],
-    "summer": ["3 summer water management tips"],
-    "winter": ["3 winter preparations"]
+    "monsoon": ["3 actions in ${languageName}"],
+    "summer": ["3 tips in ${languageName}"],
+    "winter": ["3 preparations in ${languageName}"]
   },
   "metadata": {
     "generated_at": "${new Date().toISOString()}",
     "station_id": "${station_id}",
     "user_role": "${role}",
+    "language_id": "${languageId}",
+    "language_name": "${languageName}",
     "has_farming_profile": ${!!userProfile},
     "data_completeness": "${quality && usage ? "complete" : quality ? "partial_quality_only" : usage ? "partial_usage_only" : "minimal"}"
   }
@@ -297,13 +320,13 @@ Return ONLY valid JSON (no markdown, no extra text):
 
 CRITICAL RULES:
 - Return ONLY the JSON object, no markdown, no backticks, no extra text
+- JSON keys (field names) remain in English
+- ALL text values MUST be in ${languageName} language
 - All strings must be properly formatted (no line breaks inside strings)
 - All numbers must be unquoted
-- DO NOT use the word "undefined" anywhere - all parameters have actual numeric values
-- Use the provided numeric values: pH=${quality.ph}, TDS=${quality.tds}, Fluoride=${quality.fluoride}, Nitrate=${quality.nitrate}, Arsenic=${quality.arsenic}
+- DO NOT use the word "undefined" anywhere
 - Use realistic Indian values and context
-- Be specific to the water situation (${waterStatus} level at ${avgLevel}m)
-- Tailor to user's profile and role (${role})${userProfile ? ` with ${userProfile.crops?.join(", ") || "crops"} on ${userProfile.landAreaAcres} acres` : ""}`;
+- Be specific to the water situation (${waterStatus} level at ${avgLevel}m)`;
 
     // ============ STEP 8: CALL GROQ AI ============
     console.log("🚀 Calling Groq AI...");
@@ -313,7 +336,7 @@ CRITICAL RULES:
       messages: [
         {
           role: "system",
-          content: "You are a water management expert. Return ONLY valid JSON. No markdown, no backticks, no extra text."
+          content: `You are a water management expert. Return ONLY valid JSON. No markdown, no backticks, no extra text. You MUST respond in ${languageName} language - all text content in your JSON response must be in ${languageName}.`
         },
         { role: "user", content: prompt }
       ],
@@ -332,6 +355,12 @@ CRITICAL RULES:
     try {
       data = JSON.parse(raw);
       console.log("✅ JSON parsed successfully");
+      
+      // Ensure metadata includes language info
+      if (data.metadata) {
+        data.metadata.language_id = languageId;
+        data.metadata.language_name = languageName;
+      }
     } catch (parseError) {
       console.error("❌ JSON Parse Error:", parseError.message);
       
@@ -355,6 +384,10 @@ CRITICAL RULES:
           household_daily_requirement_liters: 150,
           agriculture_yearly_m3: usage?.agriculture?.total_water_requirement_m3_year || 0,
           industrial_yearly_m3: usage?.industries?.total_usage_m3_year || 0
+        },
+        metadata: {
+          language_id: languageId,
+          language_name: languageName
         }
       };
     }
