@@ -1,4 +1,4 @@
-// / app/api/chat/route.js
+// app/api/chat/route.js
 
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
@@ -58,16 +58,18 @@ async function fetchStationData(station_id) {
   else if (avg_level < 4) water_level_status = "low";
 
   return {
-    station_id: station.station_id || station_id,
-    station_name: station.station_name || station.name || "Unknown Station",
-    district: station.district || station.location?.district || "Unknown District",
-    state: station.state || station.location?.state || "Unknown State",
+    station_id: station.station_id,
+    district: station.address?.district || "Unknown District",
+    state: station.address?.state || "Unknown State",
+    block: station.address?.block || "Unknown Block",
+    village: station.address?.village || "Unknown Village",
     location: station.location,
     avg_water_level: avg_level.toFixed(2),
     water_level_status,
     current_levels,
     historical_data: station.historical_water_levels,
     extraction_infrastructure: station.extraction_infrastructure,
+    aquifer: station.aquifer,
     water_quality: quality,
     water_usage: usage,
     waterStatus,
@@ -82,14 +84,16 @@ function buildContextPrompt(stationData, userRole) {
 
 STATION INFORMATION:
 - Station ID: ${stationData.station_id}
-- Station Name: ${stationData.station_name}
-- District: ${stationData.district}, ${stationData.state}
-- Location: ${stationData.location?.coordinates ? `${stationData.location.coordinates[1]}, ${stationData.location.coordinates[0]}` : 'N/A'}
+- Location: ${stationData.village}, ${stationData.block}, ${stationData.district}, ${stationData.state}
+- Coordinates: ${stationData.location?.coordinates ? `${stationData.location.coordinates[1]}, ${stationData.location.coordinates[0]}` : 'N/A'}
 - Current Average Water Level: ${stationData.avg_water_level} meters
 - Water Status: ${stationData.water_level_status}
 
 WATER LEVEL DATA:
 ${JSON.stringify(stationData.current_levels, null, 2)}
+
+AQUIFER INFORMATION:
+${JSON.stringify(stationData.aquifer, null, 2)}
 
 EXTRACTION INFRASTRUCTURE:
 ${JSON.stringify(stationData.extraction_infrastructure, null, 2)}
@@ -136,7 +140,8 @@ Provide balanced information suitable for general public without technical jargo
 
   context += `
 Answer questions concisely and accurately. Keep responses brief (2-4 sentences max).
-Use bullet points only when listing multiple items.
+Use bullet points + paragrapg format keep balace little para then points  only when listing multiple items.
+
 Be direct and to the point - no lengthy explanations unless asked.
 Use Indian context (liters, meters, etc.) and local terminology when relevant.`;
 
@@ -195,21 +200,17 @@ async function handleChatRequest(req) {
       session = createSession(sessionId, stationData);
 
       // Welcome message - keep it positive and concise
-      const stationName = stationData.station_name !== "Unknown Station" 
-        ? stationData.station_name 
-        : `Station ${stationData.station_id}`;
-      
       const locationText = stationData.district !== "Unknown District" 
-        ? ` in ${stationData.district}, ${stationData.state}` 
+        ? ` in ${stationData.village}, ${stationData.district}, ${stationData.state}` 
         : "";
       
       return NextResponse.json({
-        reply: `✅ **Loaded: ${stationName}**${locationText}\n\n**Status:** ${stationData.water_level_status.toUpperCase()} ✓\n**Water Level:** ${stationData.avg_water_level}m\n\nAsk me anything about this station!`,
+        reply: `✅ **Loaded: Station ${stationData.station_id}**${locationText}\n\n**Status:** ${stationData.water_level_status.toUpperCase()} ✓\n**Water Level:** ${stationData.avg_water_level}m\n\nAsk me anything about this station!`,
         stationData: {
           station_id: stationData.station_id,
-          station_name: stationData.station_name,
           district: stationData.district,
           state: stationData.state,
+          village: stationData.village,
           water_level_status: stationData.water_level_status,
         },
       });
@@ -242,7 +243,7 @@ async function handleChatRequest(req) {
       model: "llama-3.3-70b-versatile",
       messages,
       temperature: 0.7,
-      max_tokens: 1000,
+      max_tokens: 800,
     });
 
     const reply = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
@@ -257,9 +258,9 @@ async function handleChatRequest(req) {
       reply,
       stationData: {
         station_id: session.stationData.station_id,
-        station_name: session.stationData.station_name,
         district: session.stationData.district,
         state: session.stationData.state,
+        village: session.stationData.village,
       },
     });
 
@@ -295,9 +296,9 @@ export async function GET(req) {
     active: true,
     stationData: {
       station_id: session.stationData.station_id,
-      station_name: session.stationData.station_name,
       district: session.stationData.district,
       state: session.stationData.state,
+      village: session.stationData.village,
     },
     messageCount: session.conversationHistory.length,
   });
