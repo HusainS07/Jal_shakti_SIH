@@ -14,41 +14,40 @@ const cache = new Map();
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 // Language configurations
-const LANGUAGES = {
-  en: { name: "English", instruction: "Respond in English" },
-  hi: { name: "Hindi", instruction: "Respond in Hindi (हिंदी). Use Devanagari script." },
-  ta: { name: "Tamil", instruction: "Respond in Tamil (தமிழ்). Use Tamil script." },
-  te: { name: "Telugu", instruction: "Respond in Telugu (తెలుగు). Use Telugu script." },
-  kn: { name: "Kannada", instruction: "Respond in Kannada (ಕನ್ನಡ). Use Kannada script." },
-  ml: { name: "Malayalam", instruction: "Respond in Malayalam (മലയാളം). Use Malayalam script." },
-  mr: { name: "Marathi", instruction: "Respond in Marathi (मराठी). Use Devanagari script." },
-  gu: { name: "Gujarati", instruction: "Respond in Gujarati (ગુજરાતી). Use Gujarati script." },
-  bn: { name: "Bengali", instruction: "Respond in Bengali (বাংলা). Use Bengali script." },
-  pa: { name: "Punjabi", instruction: "Respond in Punjabi (ਪੰਜਾਬੀ). Use Gurmukhi script." }
+const LANGUAGE_MAP = {
+  en: "English",
+  hi: "Hindi (हिंदी)",
+  ta: "Tamil (தமிழ்)",
+  te: "Telugu (తెలుగు)",
+  bn: "Bengali (বাংলা)",
+  mr: "Marathi (मराठी)",
+  gu: "Gujarati (ગુજરાતી)",
+  kn: "Kannada (ಕನ್ನಡ)",
+  ml: "Malayalam (മലയാളം)",
+  pa: "Punjabi (ਪੰਜਾਬੀ)",
+  or: "Odia (ଓଡ଼ିଆ)",
+  as: "Assamese (অসমীয়া)",
 };
 
-const getCacheKey = (station_id, role, userId, language) => 
-  `${station_id}:${role}:${userId || "anon"}:${language}`;
+const getCacheKey = (station_id, role, userId, languageId) => 
+  `${station_id}:${role}:${userId || "anon"}:${languageId || "en"}`;
 
 export async function GET(req, context) {
   try {
     const { params } = context;
     const { station_id } = await params;
+    
+    // Get language from query parameters
     const { searchParams } = new URL(req.url);
-    const language = searchParams.get("language") || "en";
+    const languageId = searchParams.get("language_id") || "en";
+    const languageName = LANGUAGE_MAP[languageId] || "English";
 
     console.log("\n🚀 [AI Recommendations] ========== NEW REQUEST ==========");
     console.log("🏢 Station ID:", station_id);
-    console.log("🌐 Language:", language, `(${LANGUAGES[language]?.name || "Unknown"})`);
+    console.log("🌐 Language:", languageName, `(${languageId})`);
 
     if (!station_id) {
       return NextResponse.json({ error: "station_id is required" }, { status: 400 });
-    }
-
-    if (!LANGUAGES[language]) {
-      return NextResponse.json({ 
-        error: `Unsupported language: ${language}. Supported languages: ${Object.keys(LANGUAGES).join(", ")}` 
-      }, { status: 400 });
     }
 
     // ============ STEP 1: AUTHENTICATE USER ============
@@ -79,7 +78,7 @@ export async function GET(req, context) {
     }
 
     // ============ STEP 2: CHECK CACHE ============
-    const cacheKey = getCacheKey(station_id, role, userId, language);
+    const cacheKey = getCacheKey(station_id, role, userId, languageId);
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
       console.log("⚡ Returning cached response");
@@ -171,16 +170,17 @@ export async function GET(req, context) {
     console.log("   - Water level:", avgLevel, "m");
     console.log("   - Status:", waterStatus);
 
-    // ============ STEP 7: BUILD AI PROMPT WITH LANGUAGE ============
+    // ============ STEP 7: BUILD AI PROMPT WITH LANGUAGE INSTRUCTION ============
     console.log("🤖 Building AI prompt...");
     
-    const languageInstruction = LANGUAGES[language].instruction;
-    
-    const prompt = `${languageInstruction}
+    const prompt = `You are a senior water management expert in India. Analyze this groundwater station and provide comprehensive, practical recommendations.
 
-You are a senior water management expert in India. Analyze this groundwater station and provide comprehensive, practical recommendations.
-
-IMPORTANT: All text content in your response must be in ${LANGUAGES[language].name}. However, keep all JSON keys in English, and keep numeric values as numbers (not translated text).
+CRITICAL LANGUAGE REQUIREMENT:
+- You MUST respond in ${languageName} language ONLY
+- ALL text fields in the JSON response must be in ${languageName}
+- Field names (keys) remain in English, but all values must be in ${languageName}
+- This includes summaries, recommendations, tips, and all descriptive text
+- Do NOT use English or any other language for the content
 
 STATION DETAILS:
 - Name: ${station.station_name || station_id}
@@ -211,19 +211,25 @@ ${userProfile ? `- Crops: ${userProfile.crops?.join(", ") || "Not specified"}
 - Irrigation: ${userProfile.irrigationMethod || "Not specified"}` : "- No farming profile"}
 
 INSTRUCTIONS:
-Generate practical, actionable recommendations in ${LANGUAGES[language].name}. All text content (descriptions, recommendations, summaries) must be in ${LANGUAGES[language].name}, but JSON keys must remain in English.
+Generate practical, actionable recommendations in valid JSON format. ALL TEXT CONTENT MUST BE IN ${languageName}. Water quality data is provided (may include default safe values if actual data was unavailable). All recommendations MUST be:
+1. Specific to this station's actual water level (${waterStatus}) and quality
+2. Tailored to user's role (${role})
+${userProfile ? `3. Personalized for their crops (${userProfile.crops?.join(", ") || "various"}), livestock (${userProfile.livestock?.join(", ") || "none"}), and ${userProfile.landAreaAcres || "their"} acres farm` : "3. General but practical"}
+4. Include quantified benefits (liters saved, % reduction, cost savings)
+5. Suitable for Indian context (climate, resources, schemes)
+6. Written ENTIRELY in ${languageName} language
 
-Return ONLY valid JSON format:
+Return ONLY valid JSON (no markdown, no extra text). JSON structure with English keys but ${languageName} values:
 
 {
   "overall_summary": {
-    "water_quality_status": "IN ${LANGUAGES[language].name}: Analyze if water is safe/moderate/poor based on pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}, Arsenic: ${quality.arsenic}",
-    "water_availability_status": "IN ${LANGUAGES[language].name}: Describe current water level (${avgLevel}m = ${waterStatus} status), sustainability, and extraction capacity",
-    "urgent_actions": ["IN ${LANGUAGES[language].name}: List 3-4 most critical immediate actions"]
+    "water_quality_status": "Analyze in ${languageName} if water is safe/moderate/poor for drinking, irrigation, industrial use. Based on the provided parameters (pH: ${quality.ph}, TDS: ${quality.tds}, Fluoride: ${quality.fluoride}, Nitrate: ${quality.nitrate}, Arsenic: ${quality.arsenic}), determine safety. DO NOT mention 'undefined' - use the actual numeric values provided.",
+    "water_availability_status": "Describe in ${languageName} current water level (${avgLevel}m = ${waterStatus} status), sustainability, and extraction capacity (${dailyLimitLiters} L/day). Be specific about whether this is adequate or concerning.",
+    "urgent_actions": ["List in ${languageName} 3-4 most critical immediate actions based on water level being ${waterStatus} and the specific quality parameters provided"]
   },
   "water_quality": {
-    "status": "${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01 ? 'safe' : (quality.tds > 2000 || quality.fluoride > 1.5 || quality.nitrate > 45 || quality.arsenic > 0.01) ? 'poor' : 'moderate'}",
-    "summary": "IN ${LANGUAGES[language].name}: Brief assessment of water quality",
+    "status": "safe/moderate/poor in ${languageName}",
+    "summary": "Brief assessment in ${languageName}",
     "parameters_analysis": {
       "ph": "${quality.ph}",
       "tds": "${quality.tds}",
@@ -231,7 +237,7 @@ Return ONLY valid JSON format:
       "nitrate": "${quality.nitrate}",
       "arsenic": "${quality.arsenic}"
     },
-    "treatment_needed": ["IN ${LANGUAGES[language].name}: List 4-5 specific treatments needed"],
+    "treatment_needed": ["List in ${languageName} 4-5 specific treatments needed based on ACTUAL parameters"],
     "safe_for": {
       "drinking": ${quality.ph >= 6.5 && quality.ph <= 8.5 && quality.tds <= 2000 && quality.fluoride <= 1.5 && quality.nitrate <= 45 && quality.arsenic <= 0.01},
       "irrigation": ${quality.arsenic <= 0.01 && quality.tds <= 3000},
@@ -270,54 +276,57 @@ Return ONLY valid JSON format:
         "percentage": 10
       }
     },
-    "conservation_tips": ["IN ${LANGUAGES[language].name}: Provide exactly 5 household water conservation tips with quantified savings"]
+    "conservation_tips": ["Provide in ${languageName} exactly 5 household water conservation tips with quantified savings"]
   },
   ${role === "farmer" || role === "normal citizen" ? `"farmer_recommendations": {
-    "crop_suggestions": ["IN ${LANGUAGES[language].name}: Suggest 5 water-efficient crops"],
-    "irrigation_tips": ["IN ${LANGUAGES[language].name}: 5 irrigation optimization tips"],
-    "livestock_water_management": ["IN ${LANGUAGES[language].name}: 4 tips for efficient livestock water management"],
-    "farm_conservation": ["IN ${LANGUAGES[language].name}: 5 farm-specific water conservation techniques"],
-    "government_schemes": ["IN ${LANGUAGES[language].name}: List 3-4 relevant Indian government schemes"],
-    "immediate_actions": ["IN ${LANGUAGES[language].name}: 5 urgent steps farmers should take"]
+    "crop_suggestions": ["Suggest in ${languageName} 5 water-efficient crops suitable for ${station.address?.district || "this region"}"],
+    "irrigation_tips": ["Provide in ${languageName} 5 irrigation optimization tips"],
+    "livestock_water_management": ["Provide in ${languageName} 4 tips for efficient livestock water management"],
+    "farm_conservation": ["Provide in ${languageName} 5 farm-specific water conservation techniques"],
+    "government_schemes": ["List in ${languageName} 3-4 relevant Indian government schemes with brief benefits"],
+    "immediate_actions": ["Provide in ${languageName} 5 urgent steps farmers should take"]
   },` : ""}
   ${role === "decision maker" || role === "ground water researcher" || role === "town planner" ? `"policy_recommendations": {
-    "executive_summary": "IN ${LANGUAGES[language].name}: 2-3 sentence summary",
-    "immediate_actions": ["IN ${LANGUAGES[language].name}: 5 urgent policy actions"],
-    "short_term_6months": ["IN ${LANGUAGES[language].name}: 4 initiatives for next 6 months"],
-    "medium_term_2years": ["IN ${LANGUAGES[language].name}: 4 projects for 1-2 years"],
-    "long_term_5years": ["IN ${LANGUAGES[language].name}: 3 strategic long-term plans"],
-    "infrastructure_needs": ["IN ${LANGUAGES[language].name}: 4 critical infrastructure projects"],
-    "funding_sources": ["IN ${LANGUAGES[language].name}: List 5 Indian government schemes"],
-    "monitoring_requirements": ["IN ${LANGUAGES[language].name}: 4 monitoring measures"]
+    "executive_summary": "2-3 sentence summary in ${languageName}",
+    "immediate_actions": ["5 urgent policy actions in ${languageName}"],
+    "short_term_6months": ["4 initiatives in ${languageName}"],
+    "medium_term_2years": ["4 projects in ${languageName}"],
+    "long_term_5years": ["3 strategic plans in ${languageName}"],
+    "infrastructure_needs": ["4 critical projects in ${languageName}"],
+    "funding_sources": ["5 funding sources in ${languageName}"],
+    "monitoring_requirements": ["4 monitoring measures in ${languageName}"]
   },` : ""}
   "general_recommendations": {
-    "water_conservation": ["IN ${LANGUAGES[language].name}: 5 general water conservation tips"],
-    "community_initiatives": ["IN ${LANGUAGES[language].name}: 4 community-level actions"],
-    "technology_solutions": ["IN ${LANGUAGES[language].name}: 4 modern tech solutions"],
-    "cost_saving_measures": ["IN ${LANGUAGES[language].name}: 4 measures with estimated savings"]
+    "water_conservation": ["5 tips in ${languageName}"],
+    "community_initiatives": ["4 actions in ${languageName}"],
+    "technology_solutions": ["4 solutions in ${languageName}"],
+    "cost_saving_measures": ["4 measures in ${languageName}"]
   },
   "seasonal_advice": {
-    "monsoon": ["IN ${LANGUAGES[language].name}: 3 monsoon-specific actions"],
-    "summer": ["IN ${LANGUAGES[language].name}: 3 summer water management tips"],
-    "winter": ["IN ${LANGUAGES[language].name}: 3 winter preparations"]
+    "monsoon": ["3 actions in ${languageName}"],
+    "summer": ["3 tips in ${languageName}"],
+    "winter": ["3 preparations in ${languageName}"]
   },
   "metadata": {
     "generated_at": "${new Date().toISOString()}",
     "station_id": "${station_id}",
     "user_role": "${role}",
-    "language": "${language}",
-    "language_name": "${LANGUAGES[language].name}",
+    "language_id": "${languageId}",
+    "language_name": "${languageName}",
     "has_farming_profile": ${!!userProfile},
     "data_completeness": "${quality && usage ? "complete" : quality ? "partial_quality_only" : usage ? "partial_usage_only" : "minimal"}"
   }
 }
 
 CRITICAL RULES:
-- ALL text content (descriptions, recommendations, tips) MUST be in ${LANGUAGES[language].name}
-- Keep JSON keys in English
-- Keep numbers as numbers (not text)
-- Return ONLY the JSON object, no markdown, no backticks
-- Use realistic Indian context`;
+- Return ONLY the JSON object, no markdown, no backticks, no extra text
+- JSON keys (field names) remain in English
+- ALL text values MUST be in ${languageName} language
+- All strings must be properly formatted (no line breaks inside strings)
+- All numbers must be unquoted
+- DO NOT use the word "undefined" anywhere
+- Use realistic Indian values and context
+- Be specific to the water situation (${waterStatus} level at ${avgLevel}m)`;
 
     // ============ STEP 8: CALL GROQ AI ============
     console.log("🚀 Calling Groq AI...");
@@ -327,7 +336,7 @@ CRITICAL RULES:
       messages: [
         {
           role: "system",
-          content: `You are a water management expert. Return ONLY valid JSON. All text content must be in ${LANGUAGES[language].name}, but JSON keys must remain in English. No markdown, no backticks.`
+          content: `You are a water management expert. Return ONLY valid JSON. No markdown, no backticks, no extra text. You MUST respond in ${languageName} language - all text content in your JSON response must be in ${languageName}.`
         },
         { role: "user", content: prompt }
       ],
@@ -346,6 +355,12 @@ CRITICAL RULES:
     try {
       data = JSON.parse(raw);
       console.log("✅ JSON parsed successfully");
+      
+      // Ensure metadata includes language info
+      if (data.metadata) {
+        data.metadata.language_id = languageId;
+        data.metadata.language_name = languageName;
+      }
     } catch (parseError) {
       console.error("❌ JSON Parse Error:", parseError.message);
       
@@ -369,6 +384,10 @@ CRITICAL RULES:
           household_daily_requirement_liters: 150,
           agriculture_yearly_m3: usage?.agriculture?.total_water_requirement_m3_year || 0,
           industrial_yearly_m3: usage?.industries?.total_usage_m3_year || 0
+        },
+        metadata: {
+          language_id: languageId,
+          language_name: languageName
         }
       };
     }
