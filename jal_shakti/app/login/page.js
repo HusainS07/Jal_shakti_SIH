@@ -25,7 +25,7 @@ async function handleLogin(e) {
 
     // YE 2 LINE DAAL DI — AB TOKEN SAVE HOGA AUR AI PAGE PE LE JAYEGA
     localStorage.setItem("token", data.token);
-    window.location.href = "/ai";  // YA router.push("/ai") agar useRouter hai
+    window.location.href = "/stations";  // YA router.push("/ai") agar useRouter hai
 
   } catch (err) {
     setError(err.message);
