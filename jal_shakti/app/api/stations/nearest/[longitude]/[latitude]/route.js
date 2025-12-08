@@ -4,6 +4,8 @@ import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
 import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 
+const OPENTOPO_API = "https://api.opentopodata.org/v1/srtm90m";
+
 export async function GET(request, { params }) {
   try {
     await dbConnect();
@@ -27,17 +29,18 @@ export async function GET(request, { params }) {
       );
     }
 
+    // 1. Find 6 nearest stations
     const nearestStations = await Station.aggregate([
       {
         $geoNear: {
           near: { type: "Point", coordinates: [lon, lat] },
           distanceField: "distance_meters",
           spherical: true,
-          maxDistance: 500000,
-          query: { station_id: { $exists: true } }
-        }
+          maxDistance: 500000, // 500 km
+          query: { station_id: { $exists: true } },
+        },
       },
-      { $limit: 6 }
+      { $limit: 6 },
     ]);
 
     if (!nearestStations || nearestStations.length === 0) {
@@ -47,10 +50,44 @@ export async function GET(request, { params }) {
       );
     }
 
-    // Add water status analysis to each station
-    const stationsWithStatus = nearestStations.map(station => {
+    // 2. Prepare location string for OpenTopoData (format: lat1,lng1|lat2,lng2|...)
+    const locationsParam = nearestStations
+      .map((s) => {
+        const [lng, lat] = s.location.coordinates; // MongoDB stores [lng, lat]
+        return `${lat},${lng}`;
+      })
+      .join("|");
+
+    // 3. Fetch elevations in one batch request
+    let elevationResults = [];
+    try {
+      const topoRes = await fetch(`${OPENTOPO_API}?locations=${locationsParam}`);
+      if (topoRes.ok) {
+        const data = await topoRes.json();
+        elevationResults = data.results || [];
+      } else {
+        console.warn("OpenTopoData returned non-200:", topoRes.status);
+      }
+    } catch (err) {
+      console.error("Error fetching elevation data:", err.message);
+      // We continue without elevation if the external API fails
+    }
+
+    // Create a map: "lat,lng" → elevation
+    const elevationMap = new Map();
+    elevationResults.forEach((res) => {
+      const key = `${res.location.lat},${res.location.lng}`;
+      elevationMap.set(key, res.elevation ?? null);
+    });
+
+    // 4. Build final response with elevation
+    const stationsWithStatus = nearestStations.map((station) => {
+      const [lng, lat] = station.location.coordinates;
+      const coordKey = `${lat},${lng}`;
+      const elevation = elevationMap.get(coordKey) ?? null;
+
       const waterStatus = analyzeWaterStatus(station);
-      
+
       return {
         _id: station._id,
         station_id: station.station_id,
@@ -59,21 +96,22 @@ export async function GET(request, { params }) {
         state: station.address?.state,
         aquifer_type: station.aquifer?.type,
         distance_km: Math.round((station.distance_meters / 1000) * 100) / 100,
-        waterStatus: waterStatus ,
-        location : station.location.coordinates[0] && station.location.coordinates[1] ? {
-          longitude: station.location.coordinates[0],
-          latitude: station.location.coordinates[1]
-        } : null
+                      // ← NEW FIELD
+        waterStatus,
+        location: {
+          longitude: lng,
+          latitude: lat,
+        },
+         elevation_meters: elevation,
       };
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       count: stationsWithStatus.length,
       searchLocation: { longitude: lon, latitude: lat },
-      stations: stationsWithStatus
+      stations: stationsWithStatus,
     });
-
   } catch (error) {
     console.error("Fetch nearest stations error:", error);
     return NextResponse.json(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MapPin, Navigation, Droplets, Layers } from "lucide-react";
+import { MapPin, Navigation, Droplets, Layers, Mountain } from "lucide-react";
 import Link from "next/link";
 
 export default function StationsPage() {
@@ -36,9 +36,9 @@ export default function StationsPage() {
       const res = await fetch(`/api/stations/nearest/${lng}/${lat}`);
       const data = await res.json();
       if (data.success) setStations(data.stations || []);
-      else setError("No stations found");
+      else setError("No stations found nearby");
     } catch (err) {
-      setError("Failed to connect");
+      setError("Failed to connect to server");
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,7 @@ export default function StationsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
 
         <header className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl mb-4 shadow-xl">
@@ -61,61 +61,92 @@ export default function StationsPage() {
           </p>
         </header>
 
-        <div className="grid gap-7 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {stations.map((station) => {
             const ws = station.waterStatus || {};
+            const elevation = station.elevation_meters;
+
             return (
               <div
                 key={station._id}
-                className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-xl p-6 border border-white/30 hover:shadow-2xl transition-all"
+                className="bg-white/95 backdrop-blur-lg rounded-2xl shadow-xl border border-white/30 hover:shadow-2xl transition-all duration-300 overflow-hidden"
               >
-                {/* Station ID + Status Circle */}
-                <div className="flex justify-between items-start mb-5">
-                  <h3 className="text-lg font-bold text-gray-800">{station.station_id}</h3>
-                  <div className={`w-12 h-12 ${ws.statusColor || "bg-gray-400"} rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg`}>
+                {/* Header: Station ID + Status */}
+                <div className="flex justify-between items-start p-6 pb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800">{station.station_id}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{station.village}, {station.district}</p>
+                  </div>
+                  <div className={`w-14 h-14 ${ws.statusColor || "bg-gray-400"} rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg`}>
                     {ws.statusShort || "?"}
                   </div>
                 </div>
 
-                {/* Current Water Level */}
-                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl p-5 text-center mb-5">
-                  <p className="text-xs text-gray-600 uppercase tracking-wider">Current Depth</p>
-                  <p className="text-4xl font-black text-blue-700 mt-2">
-                    {ws.currentDepth !== null ? `${ws.currentDepth} m` : "—"}
+                {/* Current Water Depth */}
+                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 px-6 py-5 text-center">
+                  <p className="text-xs text-gray-600 uppercase tracking-wider">Current Depth to Water</p>
+                  <p className="text-5xl font-black text-blue-700 mt-2">
+                    {ws.currentDepth !== null && ws.currentDepth !== undefined ? `${ws.currentDepth} m` : "—"}
                   </p>
-                  <p className="text-xs text-gray-500 mt-3 font-medium">
-                    {ws.referencePeriod}
+                  <p className="text-xs text-gray-500 mt-2 font-medium">{ws.referencePeriod || "No recent data"}</p>
+                </div>
+
+                {/* Status Text */}
+                <div className="text-center py-4 bg-gray-50">
+                  <p className="text-lg font-bold text-gray-800">
+                    Status: <span className="text-xl">{ws.status || "NO DATA"}</span>
                   </p>
                 </div>
 
-                <div className="text-lg font-bold text-center text-gray-800 mb-4">
-                  Status: <span className="text-xl">{ws.status || "NO DATA"}</span>
-                </div>
-
-                {/* Location */}
-                <div className="flex items-start gap-3 mb-4 text-sm">
-                  <Navigation className="w-5 h-5 text-gray-500 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-gray-800">{station.village}</p>
-                    <p className="text-gray-600">{station.district}, {station.state}</p>
+                {/* Elevation - New Beautiful Section */}
+                {elevation !== null && elevation !== undefined ? (
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-t border-amber-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-200 rounded-lg">
+                          <Mountain className="w-6 h-6 text-amber-700" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-amber-600 font-medium">Elevation</p>
+                          <p className="text-2xl font-bold text-amber-800">
+                            {Math.round(elevation)} <span className="text-sm font-normal">m</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-amber-600">Above Sea Level</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 text-center text-sm text-gray-500">
+                    Elevation data unavailable
+                  </div>
+                )}
 
-                {/* Aquifer */}
-                <div className="bg-gray-50 rounded-xl p-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium">Aquifer:</span>
+                {/* Location Info */}
+                <div className="px-6 py-4 space-y-3">
+                  <div className="flex items-start gap-3 text-sm">
+                    <Navigation className="w-5 h-5 text-indigo-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-gray-800">{station.village}</p>
+                      <p className="text-gray-600">{station.district}, {station.state}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-sm">
+                    <Layers className="w-5 h-5 text-blue-600" />
+                    <span className="font-medium text-gray-700">Aquifer:</span>
                     <span className="font-bold text-blue-700">
                       {station.aquifer_type?.replace(/_/g, " ") || "Unknown"}
                     </span>
                   </div>
                 </div>
 
-                {/* Distance */}
-                <div className="flex justify-between items-center mt-5 pt-4 border-t border-gray-200 text-sm">
-                  <span className="text-gray-500">Distance</span>
-                  <span className="text-xl font-bold text-indigo-600">
+                {/* Distance Footer */}
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 px-6 py-4 border-t border-indigo-100 flex justify-between items-center">
+                  <span className="text-gray-600 font-medium">Distance</span>
+                  <span className="text-2xl font-bold text-indigo-700">
                     {station.distance_km} km
                   </span>
                 </div>
@@ -125,7 +156,7 @@ export default function StationsPage() {
         </div>
 
         <div className="text-center mt-12">
-          <Link href="/" className="inline-block px-8 py-3 bg-white/90 backdrop-blur rounded-xl font-semibold shadow-lg hover:shadow-xl transition">
+          <Link href="/" className="inline-block px-8 py-4 bg-white/90 backdrop-blur rounded-xl font-semibold shadow-lg hover:shadow-xl transition hover:scale-105">
             ← Back to Home
           </Link>
         </div>
@@ -134,13 +165,13 @@ export default function StationsPage() {
   );
 }
 
-// Simple components
+// Loading & Error Screens (unchanged)
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-4"></div>
-        <p className="text-xl text-gray-700">Loading groundwater data...</p>
+        <p className="text-xl text-gray-700">Fetching groundwater & elevation data...</p>
       </div>
     </div>
   );
@@ -151,7 +182,7 @@ function ErrorScreen({ error }) {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md">
         <p className="text-red-600 font-bold text-xl mb-4">{error}</p>
-        <button onClick={() => window.location.reload()} className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700">
+        <button onClick={() => window.location.reload()} className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition">
           Try Again
         </button>
       </div>
