@@ -37,7 +37,7 @@ export async function GET(request, { params }) {
           query: { station_id: { $exists: true } }
         }
       },
-      { $limit: 5 }
+      { $limit: 6 }
     ]);
 
     if (!nearestStations || nearestStations.length === 0) {
@@ -59,7 +59,11 @@ export async function GET(request, { params }) {
         state: station.address?.state,
         aquifer_type: station.aquifer?.type,
         distance_km: Math.round((station.distance_meters / 1000) * 100) / 100,
-        waterStatus: waterStatus
+        waterStatus: waterStatus ,
+        location : station.location.coordinates[0] && station.location.coordinates[1] ? {
+          longitude: station.location.coordinates[0],
+          latitude: station.location.coordinates[1]
+        } : null
       };
     });
 
