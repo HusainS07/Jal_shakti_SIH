@@ -14,6 +14,22 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 const sessions = new Map();
 const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
 
+// Language configurations
+const LANGUAGE_MAP = {
+  en: "English",
+  hi: "Hindi (हिंदी)",
+  ta: "Tamil (தமிழ்)",
+  te: "Telugu (తెలుగు)",
+  bn: "Bengali (বাংলা)",
+  mr: "Marathi (मराठी)",
+  gu: "Gujarati (ગુજરાતી)",
+  kn: "Kannada (ಕನ್ನಡ)",
+  ml: "Malayalam (മലയാളം)",
+  pa: "Punjabi (ਪੰਜਾਬੀ)",
+  or: "Odia (ଓଡ଼ିଆ)",
+  as: "Assamese (অসমীয়া)",
+};
+
 function getSession(sessionId) {
   const session = sessions.get(sessionId);
   if (session && Date.now() - session.lastAccess < SESSION_TTL) {
@@ -24,14 +40,22 @@ function getSession(sessionId) {
   return null;
 }
 
-function createSession(sessionId, stationData) {
+function createSession(sessionId, stationData, languageId = "en") {
   const session = {
     stationData,
     conversationHistory: [],
+    languageId,
+    languageName: LANGUAGE_MAP[languageId] || "English",
     lastAccess: Date.now(),
   };
   sessions.set(sessionId, session);
   return session;
+}
+
+function updateSessionLanguage(session, languageId) {
+  session.languageId = languageId;
+  session.languageName = LANGUAGE_MAP[languageId] || "English";
+  session.lastAccess = Date.now();
 }
 
 async function fetchStationData(station_id) {
@@ -77,11 +101,13 @@ async function fetchStationData(station_id) {
   };
 }
 
-function buildContextPrompt(stationData, userRole) {
+function buildContextPrompt(stationData, userRole, languageName) {
   const isUser = ["farmer", "normal citizen"].includes(userRole);
   const isPlanner = ["decision maker", "ground water researcher"].includes(userRole);
 
   let context = `You are a water management assistant for groundwater station monitoring in India. 
+
+IMPORTANT: You MUST respond ONLY in ${languageName}. All your responses must be in ${languageName} language.
 
 STATION INFORMATION:
 - Station ID: ${stationData.station_id}
@@ -140,8 +166,11 @@ Provide balanced information suitable for general public without technical jargo
   }
 
   context += `
+RESPONSE LANGUAGE: ${languageName}
+CRITICAL: You MUST respond in ${languageName} language ONLY. Do not use English or any other language.
+
 Answer questions concisely and accurately. Keep responses brief (2-4 sentences max).
-Use bullet points + paragrapg format keep balace little para then points  only when listing multiple items.
+Use bullet points + paragraph format, keep balance - little para then points only when listing multiple items.
 
 Be direct and to the point - no lengthy explanations unless asked.
 Use Indian context (liters, meters, etc.) and local terminology when relevant.`;
@@ -152,7 +181,7 @@ Use Indian context (liters, meters, etc.) and local terminology when relevant.`;
 async function handleChatRequest(req) {
   try {
     const body = await req.json();
-    const { message, sessionId, station_id } = body;
+    const { message, sessionId, station_id, language_id, language_name } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -161,6 +190,10 @@ async function handleChatRequest(req) {
     if (!sessionId) {
       return NextResponse.json({ error: "Session ID is required" }, { status: 400 });
     }
+
+    // Validate and set language
+    const languageId = language_id || "en";
+    const languageName = language_name || LANGUAGE_MAP[languageId] || "English";
 
     // Get user role from JWT token
     let userRole = null;
@@ -185,6 +218,8 @@ async function handleChatRequest(req) {
         return NextResponse.json({
           reply: "👋 Hi! I'm your **water management assistant**.\n\nPlease provide a **station ID** to get started.",
           needsStationId: true,
+          languageId,
+          languageName,
         });
       }
 
@@ -197,8 +232,8 @@ async function handleChatRequest(req) {
         }, { status: 404 });
       }
 
-      // Create new session with station data
-      session = createSession(sessionId, stationData);
+      // Create new session with station data and language
+      session = createSession(sessionId, stationData, languageId);
 
       // Welcome message - keep it positive and concise
       const locationText = stationData.district !== "Unknown District" 
@@ -214,14 +249,21 @@ async function handleChatRequest(req) {
           village: stationData.village,
           water_level_status: stationData.water_level_status,
         },
+        languageId: session.languageId,
+        languageName: session.languageName,
       });
+    }
+
+    // Update language if changed
+    if (languageId !== session.languageId) {
+      updateSessionLanguage(session, languageId);
     }
 
     // Session exists - process the chat message
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-    // Build context for AI
-    const systemContext = buildContextPrompt(session.stationData, userRole);
+    // Build context for AI with language instruction
+    const systemContext = buildContextPrompt(session.stationData, userRole, session.languageName);
 
     // Add user message to conversation history
     session.conversationHistory.push({
@@ -263,6 +305,8 @@ async function handleChatRequest(req) {
         state: session.stationData.state,
         village: session.stationData.village,
       },
+      languageId: session.languageId,
+      languageName: session.languageName,
     });
 
   } catch (error) {
@@ -302,5 +346,7 @@ export async function GET(req) {
       village: session.stationData.village,
     },
     messageCount: session.conversationHistory.length,
+    languageId: session.languageId,
+    languageName: session.languageName,
   });
 }

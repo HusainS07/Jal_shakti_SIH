@@ -1,29 +1,41 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Bot, User, Loader2, Info, Droplet, Sprout, Beef } from "lucide-react";
+import { Send, Bot, User, Loader2, Info, Droplet, Sprout, Languages, X } from "lucide-react";
+
+// Language options with Assamese added
+const LANGUAGES = [
+  { id: "en", name: "English", nativeName: "English" },
+  { id: "hi", name: "Hindi", nativeName: "हिंदी" },
+  { id: "ta", name: "Tamil", nativeName: "தமிழ்" },
+  { id: "te", name: "Telugu", nativeName: "తెలుగు" },
+  { id: "bn", name: "Bengali", nativeName: "বাংলা" },
+  { id: "mr", name: "Marathi", nativeName: "मराठी" },
+  { id: "gu", name: "Gujarati", nativeName: "ગુજરાતી" },
+  { id: "kn", name: "Kannada", nativeName: "ಕನ್ನಡ" },
+  { id: "ml", name: "Malayalam", nativeName: "മലയാളം" },
+  { id: "pa", name: "Punjabi", nativeName: "ਪੰਜਾਬੀ" },
+  { id: "or", name: "Odia", nativeName: "ଓଡ଼ିଆ" },
+  { id: "as", name: "Assamese", nativeName: "অসমীয়া" },
+];
 
 // Simple markdown renderer for chat messages
 function renderMessage(text) {
   if (!text) return null;
   
-  // Split by newlines to handle paragraphs
   const lines = text.split('\n');
   
   return lines.map((line, idx) => {
     if (!line.trim()) return <br key={idx} />;
     
-    // Process inline formatting
     let processed = line;
     const elements = [];
     let lastIndex = 0;
     
-    // Bold: **text**
     const boldRegex = /\*\*(.+?)\*\*/g;
     let match;
     
     while ((match = boldRegex.exec(line)) !== null) {
-      // Add text before bold
       if (match.index > lastIndex) {
         elements.push(
           <span key={`text-${idx}-${lastIndex}`}>
@@ -31,7 +43,6 @@ function renderMessage(text) {
           </span>
         );
       }
-      // Add bold text
       elements.push(
         <strong key={`bold-${idx}-${match.index}`} className="font-bold">
           {match[1]}
@@ -40,7 +51,6 @@ function renderMessage(text) {
       lastIndex = match.index + match[0].length;
     }
     
-    // Add remaining text
     if (lastIndex < line.length) {
       elements.push(
         <span key={`text-${idx}-${lastIndex}`}>
@@ -49,7 +59,6 @@ function renderMessage(text) {
       );
     }
     
-    // Check if it's a bullet point
     if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
       return (
         <div key={idx} className="flex gap-2 ml-2">
@@ -59,7 +68,6 @@ function renderMessage(text) {
       );
     }
     
-    // Regular line
     return (
       <div key={idx} className="mb-1">
         {elements.length > 0 ? elements : line}
@@ -76,6 +84,8 @@ function ChatPage() {
   const [stationData, setStationData] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [needsStationId, setNeedsStationId] = useState(true);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0]); // Default English
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -87,7 +97,14 @@ function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    // Initial greeting - will be replaced by server greeting
+    // Load saved language preference
+    const savedLang = localStorage.getItem("chatLanguage");
+    if (savedLang) {
+      const lang = LANGUAGES.find(l => l.id === savedLang);
+      if (lang) setSelectedLanguage(lang);
+    }
+
+    // Initial greeting
     setMessages([
       {
         role: "assistant",
@@ -96,6 +113,20 @@ function ChatPage() {
       },
     ]);
   }, []);
+
+  const handleLanguageChange = (language) => {
+    setSelectedLanguage(language);
+    localStorage.setItem("chatLanguage", language.id);
+    setShowLanguageModal(false);
+    
+    // Add system message about language change
+    const systemMessage = {
+      role: "assistant",
+      content: `✓ Language changed to **${language.name} (${language.nativeName})**. All responses will now be in ${language.name}.`,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, systemMessage]);
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -116,7 +147,6 @@ function ChatPage() {
       // Extract station_id if user is providing it
       let station_id = null;
       if (needsStationId) {
-        // Try to extract station ID from message
         const idMatch = input.match(/\b\d{4,}\b/) || input.match(/station[:\s]+(\w+)/i);
         station_id = idMatch ? idMatch[1] || idMatch[0] : input.trim();
       }
@@ -130,6 +160,8 @@ function ChatPage() {
         body: JSON.stringify({
           message: input,
           sessionId,
+          language_id: selectedLanguage.id,
+          language_name: `${selectedLanguage.name} (${selectedLanguage.nativeName})`,
           ...(needsStationId && station_id && { station_id }),
         }),
       });
@@ -185,19 +217,6 @@ function ChatPage() {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case "critical":
-        return "text-red-600";
-      case "low":
-        return "text-orange-600";
-      case "safe":
-        return "text-green-600";
-      default:
-        return "text-gray-600";
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-4">
       <div className="max-w-5xl mx-auto h-[calc(100vh-2rem)] flex flex-col">
@@ -217,7 +236,17 @@ function ChatPage() {
               </div>
             </div>
             
-
+            {/* Language Selector Button */}
+            <button
+              onClick={() => setShowLanguageModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all shadow-md"
+            >
+              <Languages className="w-5 h-5" />
+              <div className="text-left">
+                <div className="text-xs opacity-80">Language</div>
+                <div className="text-sm font-semibold">{selectedLanguage.nativeName}</div>
+              </div>
+            </button>
           </div>
 
           {/* User Farming Profile Card */}
@@ -256,7 +285,7 @@ function ChatPage() {
             </div>
           )}
 
-          {/* Station Info Card - Only show if station name is not Unknown */}
+          {/* Station Info Card */}
           {stationData && stationData.station_name !== "Unknown Station" && (
             <div className="mt-4 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl p-4 text-white">
               <div className="flex items-center gap-2 mb-3">
@@ -387,7 +416,6 @@ function ChatPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="text-xs text-gray-500">Quick questions:</span>
               {userProfile && userProfile.crops?.length > 0 ? (
-                // Personalized suggestions for farmers
                 [
                   `Water needs for ${userProfile.crops[0]}?`,
                   "Best irrigation schedule?",
@@ -403,7 +431,6 @@ function ChatPage() {
                   </button>
                 ))
               ) : (
-                // Generic suggestions
                 [
                   "What's the water quality?",
                   "Show conservation tips",
@@ -423,6 +450,63 @@ function ChatPage() {
           )}
         </div>
       </div>
+
+      {/* Language Selection Modal */}
+      {showLanguageModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Languages className="w-6 h-6" />
+                <div>
+                  <h2 className="text-xl font-bold">Select Language</h2>
+                  <p className="text-sm opacity-90">Choose your preferred language for responses</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLanguageModal(false)}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Language Grid */}
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-100px)]">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {LANGUAGES.map((language) => (
+                  <button
+                    key={language.id}
+                    onClick={() => handleLanguageChange(language)}
+                    className={`p-4 rounded-xl border-2 transition-all text-left ${
+                      selectedLanguage.id === language.id
+                        ? "border-purple-500 bg-purple-50 shadow-md"
+                        : "border-gray-200 hover:border-purple-300 hover:bg-purple-50/50"
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-800">{language.name}</div>
+                    <div className="text-lg mt-1 text-purple-600">{language.nativeName}</div>
+                    {selectedLanguage.id === language.id && (
+                      <div className="mt-2 text-xs text-purple-600 font-medium">✓ Selected</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowLanguageModal(false)}
+                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
