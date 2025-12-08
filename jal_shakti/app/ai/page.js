@@ -76,7 +76,7 @@ export default function WaterQualityDashboard() {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Enter Station ID (e.g., RJ_JAIPUR_CHOMU_001)"
+                placeholder="Enter Station ID (e.g. RJ_JAIPUR_CHOMU_001)"
                 value={stationId}
                 onChange={(e) => setStationId(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchRecommendations()}
