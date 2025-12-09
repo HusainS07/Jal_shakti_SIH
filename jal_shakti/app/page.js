@@ -96,7 +96,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="relative text-center py-8 mt-16">
         <p className="text-gray-600 font-medium">
-          © 2025 JalShakti • Made with ❤️ for India's Water Future
+          © 2025 JalShakti • Made with Love for India's Water Future
         </p>
       </footer>
     </div>
