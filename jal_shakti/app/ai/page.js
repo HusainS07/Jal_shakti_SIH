@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { Search, Globe, Droplets, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Download, Brain, Target, Users, Lightbulb } from "lucide-react";
+import { Search, Globe, Droplets, AlertCircle, CheckCircle, XCircle, Loader2, Copy, Download } from "lucide-react";
 
 const LANGUAGES = [
   { code: "en", name: "English", flag: "🇬🇧" },
@@ -247,79 +247,6 @@ export default function AIWaterDashboard() {
                   </button>
                 </div>
               </div>
-
-              {/* AI PERSONALIZATION REASONING - NEW SECTION */}
-              {data.personalization_reasoning && (
-                <div className="bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl shadow-2xl p-8 border-4 border-indigo-300">
-                  <div className="flex items-center justify-center gap-4 mb-6">
-                    <Brain className="w-10 h-10 text-indigo-600" />
-                    <h2 className="text-3xl font-bold text-indigo-900">AI Personalization Insights</h2>
-                  </div>
-                  
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Role-Based Justification */}
-                    <div className="bg-white rounded-xl p-5 shadow-lg">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Target className="w-6 h-6 text-indigo-600" />
-                        <h3 className="text-lg font-bold text-indigo-900">Why These Recommendations?</h3>
-                      </div>
-                      <p className="text-gray-700 leading-relaxed text-sm">
-                        {data.personalization_reasoning.role_based_justification}
-                      </p>
-                    </div>
-
-                    {/* Profile-Based Customization */}
-                    <div className="bg-white rounded-xl p-5 shadow-lg">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Users className="w-6 h-6 text-purple-600" />
-                        <h3 className="text-lg font-bold text-purple-900">Tailored to Your Profile</h3>
-                      </div>
-                      <p className="text-gray-700 leading-relaxed text-sm">
-                        {data.personalization_reasoning.profile_based_customization}
-                      </p>
-                    </div>
-
-                    {/* Station Conditions Impact */}
-                    <div className="bg-white rounded-xl p-5 shadow-lg">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Droplets className="w-6 h-6 text-teal-600" />
-                        <h3 className="text-lg font-bold text-teal-900">Based on Local Conditions</h3>
-                      </div>
-                      <p className="text-gray-700 leading-relaxed text-sm">
-                        {data.personalization_reasoning.station_conditions_impact}
-                      </p>
-                    </div>
-
-                    {/* Comparison to Generic */}
-                    <div className="bg-white rounded-xl p-5 shadow-lg">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Lightbulb className="w-6 h-6 text-yellow-600" />
-                        <h3 className="text-lg font-bold text-yellow-900">What Makes This Special?</h3>
-                      </div>
-                      <p className="text-gray-700 leading-relaxed text-sm">
-                        {data.personalization_reasoning.comparison_to_generic}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Key Personalization Factors */}
-                  {data.personalization_reasoning.key_personalization_factors && (
-                    <div className="mt-6 bg-white rounded-xl p-5 shadow-lg">
-                      <h3 className="text-lg font-bold text-indigo-900 mb-3">Key Personalization Factors</h3>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        {data.personalization_reasoning.key_personalization_factors.map((factor, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <div className="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
-                              {idx + 1}
-                            </div>
-                            <p className="text-gray-700 text-sm pt-0.5">{factor}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Overall Summary */}
               {data.overall_summary && (
