@@ -1,352 +1,269 @@
-// app/api/chat/route.js
-
-import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { dbConnect } from "@/lib/dbConnect";
 import Station from "@/models/station";
 import { analyzeWaterStatus } from "@/utils/waterLevelStatus";
 import Groq from "groq-sdk";
-import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
-
-// Session store to maintain conversation context
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const sessions = new Map();
-const SESSION_TTL = 30 * 60 * 1000; // 30 minutes
 
-// Language configurations
-const LANGUAGE_MAP = {
-  en: "English",
-  hi: "Hindi (हिंदी)",
-  ta: "Tamil (தமிழ்)",
-  te: "Telugu (తెలుగు)",
-  bn: "Bengali (বাংলা)",
-  mr: "Marathi (मराठी)",
-  gu: "Gujarati (ગુજરાતી)",
-  kn: "Kannada (ಕನ್ನಡ)",
-  ml: "Malayalam (മലയാളം)",
-  pa: "Punjabi (ਪੰਜਾਬੀ)",
-  or: "Odia (ଓଡ଼ିଆ)",
-  as: "Assamese (অসমীয়া)",
-};
+/* =========================
+   INTENT HELPERS
+========================= */
 
-function getSession(sessionId) {
-  const session = sessions.get(sessionId);
-  if (session && Date.now() - session.lastAccess < SESSION_TTL) {
-    session.lastAccess = Date.now();
-    return session;
-  }
-  sessions.delete(sessionId);
-  return null;
+function isExactStationId(message) {
+  return /\b[A-Z]{2}_[A-Z]+_\w+\d+\b/i.test(message);
 }
 
-function createSession(sessionId, stationData, languageId = "en") {
-  const session = {
-    stationData,
-    conversationHistory: [],
-    languageId,
-    languageName: LANGUAGE_MAP[languageId] || "English",
-    lastAccess: Date.now(),
+function looksLikeLocation(message) {
+  return (
+    message.trim().split(" ").length <= 3 &&
+    !/[?]/.test(message) &&
+    !/(how|what|why|tips|farming|irrigation|help|water)/i.test(message)
+  );
+}
+
+function isGeneralQuery(message) {
+  return (
+    message.split(" ").length > 3 ||
+    /[?]/.test(message) ||
+    /(farming|irrigation|crop|tips|scheme|how|what|why|conservation|water)/i.test(
+      message
+    )
+  );
+}
+
+/* =========================
+   STATION SEARCH
+========================= */
+
+async function searchStations(query, limit = 5) {
+  const searchQuery = {
+    $or: [
+      { station_id: { $regex: query, $options: "i" } },
+      { "address.state": { $regex: query, $options: "i" } },
+      { "address.district": { $regex: query, $options: "i" } },
+      { "address.village": { $regex: query, $options: "i" } },
+      { "address.block": { $regex: query, $options: "i" } }
+    ]
   };
-  sessions.set(sessionId, session);
-  return session;
+
+  const stations = await Station.find(searchQuery, {
+    station_id: 1,
+    "address.village": 1,
+    "address.district": 1,
+    "address.state": 1,
+    _id: 0
+  })
+    .limit(limit)
+    .lean();
+
+  return stations.map(s => ({
+    station_id: s.station_id,
+    village: s.address?.village || "Unknown",
+    district: s.address?.district || "Unknown",
+    state: s.address?.state || "Unknown",
+  }));
 }
 
-function updateSessionLanguage(session, languageId) {
-  session.languageId = languageId;
-  session.languageName = LANGUAGE_MAP[languageId] || "English";
-  session.lastAccess = Date.now();
-}
+/* =========================
+   POST HANDLER
+========================= */
 
-async function fetchStationData(station_id) {
-  await dbConnect();
-
-  const station = await Station.findOne({ station_id }).lean();
-  if (!station) return null;
-
-  const waterStatus = analyzeWaterStatus(station);
-
-  const latestYear = Object.keys(station.historical_water_levels || {})
-    .map(Number)
-    .sort((a, b) => b - a)[0];
-  const current_levels = station.historical_water_levels?.[latestYear] || {};
-
-  const quality = await mongoose.connection.collection("water-quality").findOne({ station_id });
-  const usage = await mongoose.connection.collection("water-usage").findOne({ station_id });
-
-  const levels = Object.values(current_levels).filter(Boolean);
-  const avg_level = levels.length ? levels.reduce((a, b) => a + b, 0) / levels.length : 0;
-
-  let water_level_status = "safe";
-  if (avg_level <= 30) water_level_status = "safe";
-  else if (avg_level <= 45) water_level_status = "alert";
-  else water_level_status = "critical";
-
-  return {
-    station_id: station.station_id,
-    district: station.address?.district || "Unknown District",
-    state: station.address?.state || "Unknown State",
-    block: station.address?.block || "Unknown Block",
-    village: station.address?.village || "Unknown Village",
-    location: station.location,
-    avg_water_level: avg_level.toFixed(2),
-    water_level_status,
-    current_levels,
-    historical_data: station.historical_water_levels,
-    extraction_infrastructure: station.extraction_infrastructure,
-    aquifer: station.aquifer,
-    water_quality: quality,
-    water_usage: usage,
-    waterStatus,
-  };
-}
-
-function buildContextPrompt(stationData, userRole, languageName) {
-  const isUser = ["farmer", "normal citizen"].includes(userRole);
-  const isPlanner = ["decision maker", "ground water researcher"].includes(userRole);
-
-  let context = `You are a water management assistant for groundwater station monitoring in India. 
-
-IMPORTANT: You MUST respond ONLY in ${languageName}. All your responses must be in ${languageName} language.
-
-STATION INFORMATION:
-- Station ID: ${stationData.station_id}
-- Location: ${stationData.village}, ${stationData.block}, ${stationData.district}, ${stationData.state}
-- Coordinates: ${stationData.location?.coordinates ? `${stationData.location.coordinates[1]}, ${stationData.location.coordinates[0]}` : 'N/A'}
-- Current Average Water Level: ${stationData.avg_water_level} meters below groundlevel
-- Water Status: ${stationData.water_level_status}
-
-WATER LEVEL DATA:
-${JSON.stringify(stationData.current_levels, null, 2)}
-
-AQUIFER INFORMATION:
-${JSON.stringify(stationData.aquifer, null, 2)}
-
-EXTRACTION INFRASTRUCTURE:
-${JSON.stringify(stationData.extraction_infrastructure, null, 2)}
-
-WATER QUALITY:
-${JSON.stringify(stationData.water_quality, null, 2)}
-
-WATER USAGE:
-${JSON.stringify(stationData.water_usage, null, 2)}
-
-`;
-
-  if (isUser) {
-    context += `
-USER ROLE: ${userRole}
-You should provide practical advice for:
-- Water conservation techniques
-- Crop selection based on water availability
-- Household water management
-- Livestock water requirements
-- Water quality concerns and solutions
-`;
-  }
-
-  if (isPlanner) {
-    context += `
-USER ROLE: ${userRole}
-You should provide strategic insights for:
-- Policy recommendations
-- Infrastructure projects
-- Recharge interventions
-- Industrial regulation
-- Long-term water planning
-- Budget allocation suggestions
-`;
-  }
-
-  if (!isUser && !isPlanner) {
-    context += `
-USER ROLE: General Public
-Provide balanced information suitable for general public without technical jargon.
-`;
-  }
-
-  context += `
-RESPONSE LANGUAGE: ${languageName}
-CRITICAL: You MUST respond in ${languageName} language ONLY. Do not use English or any other language.
-
-Answer questions concisely and accurately. Keep responses brief (2-4 sentences max).
-Use bullet points + paragraph format, keep balance - little para then points only when listing multiple items.
-
-Be direct and to the point - no lengthy explanations unless asked.
-Use Indian context (liters, meters, etc.) and local terminology when relevant.`;
-
-  return context;
-}
-
-async function handleChatRequest(req) {
+export async function POST(req) {
   try {
-    const body = await req.json();
-    const { message, sessionId, station_id, language_id, language_name } = body;
+    await dbConnect();
 
-    if (!message) {
-      return NextResponse.json({ error: "Message is required" }, { status: 400 });
-    }
+    const {
+      message,
+      sessionId,
+      language_id = "en",
+      station_id: providedStationId,
+      confirmStationId
+    } = await req.json();
 
     if (!sessionId) {
-      return NextResponse.json({ error: "Session ID is required" }, { status: 400 });
+      return NextResponse.json({ error: "Session ID required" }, { status: 400 });
     }
 
-    // Validate and set language
-    const languageId = language_id || "en";
-    const languageName = language_name || LANGUAGE_MAP[languageId] || "English";
+    /* ===== SESSION ===== */
 
-    // Get user role from JWT token
-    let userRole = null;
-    const auth = req.headers.get("authorization");
-    if (auth?.startsWith("Bearer ")) {
-      try {
-        const token = auth.slice(7);
-        const decoded = jwt.verify(token, JWT_SECRET);
-        userRole = decoded.role?.toLowerCase();
-      } catch (e) {
-        console.log("Invalid/expired token → public mode");
-      }
-    }
-
-    // Check if session exists
-    let session = getSession(sessionId);
-
-    // If no session or station_id provided, check if user is providing station_id
+    let session = sessions.get(sessionId);
     if (!session) {
-      if (!station_id) {
-        // First message - ask for station ID
-        return NextResponse.json({
-          reply: "👋 Hi! I'm your **water management assistant**.\n\nPlease provide a **station ID** to get started.",
-          needsStationId: true,
-          languageId,
-          languageName,
-        });
-      }
+      session = {
+        history: [],
+        stationData: null,
+        languageId: language_id
+      };
+      sessions.set(sessionId, session);
+    } else {
+      session.languageId = language_id;
+    }
 
-      // Fetch station data
-      const stationData = await fetchStationData(station_id);
-      if (!stationData) {
-        return NextResponse.json({
-          error: `Station with ID '${station_id}' not found. Please check the station ID and try again.`,
-          needsStationId: true,
-        }, { status: 404 });
-      }
+    /* =========================
+       GENERAL MODE (ONLY IF NO STATION LOADED)
+    ========================= */
 
-      // Create new session with station data and language
-      session = createSession(sessionId, stationData, languageId);
+    const generalMode =
+      !session.stationData &&          // ✅ KEY FIX
+      !confirmStationId &&
+      !providedStationId &&
+      !isExactStationId(message) &&
+      !looksLikeLocation(message) &&
+      isGeneralQuery(message);
 
-      // Welcome message - keep it positive and concise
-      const locationText = stationData.district !== "Unknown District" 
-        ? ` in ${stationData.village}, ${stationData.district}, ${stationData.state}` 
-        : "";
-      
+    if (generalMode) {
+      const lang = session.languageId === "en" ? "English" : "Hindi";
+
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: `You are Jal Shakti AI Assistant for India. Respond in ${lang}.
+Give practical advice. Do not mention stations.`
+          },
+          { role: "user", content: message }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+      });
+
       return NextResponse.json({
-        reply: `✅ **Loaded: Station ${stationData.station_id}**${locationText}\n\n**Status:** ${stationData.water_level_status.toUpperCase()} ✓\n**Water Level:** ${stationData.avg_water_level}m\n\nAsk me anything about this station!`,
-        stationData: {
-          station_id: stationData.station_id,
-          district: stationData.district,
-          state: stationData.state,
-          village: stationData.village,
-          water_level_status: stationData.water_level_status,
-        },
-        languageId: session.languageId,
-        languageName: session.languageName,
+        reply: completion.choices[0].message.content,
+        stationData: null,
+        languageId: session.languageId
       });
     }
 
-    // Update language if changed
-    if (languageId !== session.languageId) {
-      updateSessionLanguage(session, languageId);
+    /* =========================
+       CONFIRMATION FLOW
+    ========================= */
+
+    if (confirmStationId) {
+      const confirmed = message.toLowerCase();
+
+      if (["yes", "y", "हां", "हाँ"].includes(confirmed)) {
+        const station = await Station.findOne({ station_id: confirmStationId }).lean();
+        if (!station) {
+          return NextResponse.json({ reply: "Station not found." });
+        }
+
+        const waterStatus = analyzeWaterStatus(station);
+
+        session.stationData = {
+          station_id: station.station_id,
+          village: station.address?.village,
+          district: station.address?.district,
+          state: station.address?.state,
+          avg_level: waterStatus.currentDepth?.toFixed(2),
+          water_level_status: waterStatus.status
+        };
+
+        return NextResponse.json({
+          reply: `✅ Station loaded: ${station.station_id}`,
+          stationData: session.stationData,
+          languageId: session.languageId
+        });
+      }
+
+      session.stationData = null;
+      return NextResponse.json({ reply: "Okay, search another place." });
     }
 
-    // Session exists - process the chat message
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    /* =========================
+       DIRECT STATION LOAD
+    ========================= */
 
-    // Build context for AI with language instruction
-    const systemContext = buildContextPrompt(session.stationData, userRole, session.languageName);
+    const exactMatch = message.match(/\b([A-Z]{2}_[A-Z]+_\w+\d+)\b/i);
+    const stationId = providedStationId || (exactMatch ? exactMatch[1] : null);
 
-    // Add user message to conversation history
-    session.conversationHistory.push({
-      role: "user",
-      content: message,
-    });
+    if (stationId && !session.stationData) {
+      const station = await Station.findOne({ station_id: stationId }).lean();
+      if (station) {
+        const waterStatus = analyzeWaterStatus(station);
+        session.stationData = {
+          station_id: station.station_id,
+          village: station.address?.village,
+          district: station.address?.district,
+          state: station.address?.state,
+          avg_level: waterStatus.currentDepth?.toFixed(2),
+          water_level_status: waterStatus.status
+        };
 
-    // Keep only last 10 messages to avoid token limits
-    if (session.conversationHistory.length > 10) {
-      session.conversationHistory = session.conversationHistory.slice(-10);
+        return NextResponse.json({
+          reply: `✅ Station loaded: ${stationId}`,
+          stationData: session.stationData,
+          languageId: session.languageId
+        });
+      }
     }
 
-    // Create messages array for Groq
-    const messages = [
-      { role: "system", content: systemContext },
-      ...session.conversationHistory,
-    ];
+    /* =========================
+       LOCATION SEARCH
+    ========================= */
+
+    if (!session.stationData && looksLikeLocation(message)) {
+      const results = await searchStations(message);
+
+      if (results.length > 0) {
+        session.pendingConfirmation = results[0].station_id;
+
+        let reply = `🔍 Found stations:\n\n`;
+        results.forEach((s, i) => {
+          reply += `${i + 1}. ${s.station_id} – ${s.village}, ${s.state}\n`;
+        });
+
+        reply += `\nLoad **${results[0].station_id}**? (Yes / No)`;
+
+        return NextResponse.json({
+          reply,
+          pendingConfirmation: results[0].station_id,
+          stationData: null
+        });
+      }
+    }
+
+    /* =========================
+       ✅ STATION-AWARE CHAT
+    ========================= */
+
+    const lang = session.languageId === "en" ? "English" : "Hindi";
+    const s = session.stationData;
+    console.log("STATION DATA IN PROMPT:", session.stationData);
+
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
-      messages,
+      messages: [
+        {
+          role: "system",
+          content: `You are a groundwater expert in India. Respond in ${lang}.
+
+Station: ${s.station_id}
+Location: ${s.village}, ${s.district}, ${s.state}
+Water Level: ${s.avg_level} m
+Status: ${s.water_level_status}
+
+Use this data while answering.`
+        },
+        { role: "user", content: message }
+      ],
       temperature: 0.7,
-      max_tokens: 800,
-    });
-
-    const reply = completion.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
-
-    // Add assistant reply to conversation history
-    session.conversationHistory.push({
-      role: "assistant",
-      content: reply,
+      max_tokens: 600
     });
 
     return NextResponse.json({
-      reply,
-      stationData: {
-        station_id: session.stationData.station_id,
-        district: session.stationData.district,
-        state: session.stationData.state,
-        village: session.stationData.village,
-      },
-      languageId: session.languageId,
-      languageName: session.languageName,
+      reply: completion.choices[0].message.content,
+      stationData: session.stationData,
+      languageId: session.languageId
     });
 
   } catch (error) {
-    console.error("Chat Error:", error);
+    console.error(error);
     return NextResponse.json(
-      { error: "Failed to process chat message", details: error.message },
+      { error: "Something went wrong" },
       { status: 500 }
     );
   }
-}
-
-// Export POST handler
-export async function POST(req) {
-  return handleChatRequest(req);
-}
-
-// Optional: GET endpoint to check session status
-export async function GET(req) {
-  const { searchParams } = new URL(req.url);
-  const sessionId = searchParams.get("sessionId");
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "Session ID required" }, { status: 400 });
-  }
-
-  const session = getSession(sessionId);
-  if (!session) {
-    return NextResponse.json({ active: false, message: "No active session" });
-  }
-
-  return NextResponse.json({
-    active: true,
-    stationData: {
-      station_id: session.stationData.station_id,
-      district: session.stationData.district,
-      state: session.stationData.state,
-      village: session.stationData.village,
-    },
-    messageCount: session.conversationHistory.length,
-    languageId: session.languageId,
-    languageName: session.languageName,
-  });
 }

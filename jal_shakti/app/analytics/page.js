@@ -1,17 +1,16 @@
-// app/analytics/page.js
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MapPin, CloudRain, Search, TrendingUp, TrendingDown, Droplets } from "lucide-react";
-import Link from "next/link";
+import { MapPin, CloudRain, Search, TrendingUp, TrendingDown, Droplets, Brain, Lightbulb, Target, Users, AlertCircle, CheckCircle, Info } from "lucide-react";
 
 export default function AnalyticsPage() {
   const [stationId, setStationId] = useState("");
   const [data, setData] = useState(null);
   const [prediction, setPrediction] = useState(null);
+  const [aiRecommendations, setAiRecommendations] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hasSearched, setHasSearched] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -48,6 +47,37 @@ export default function AnalyticsPage() {
     };
   }, [stationId]);
 
+  const fetchAIRecommendations = async (station_id) => {
+    setAiLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.log("No auth token found, skipping AI recommendations");
+        return;
+      }
+
+      const res = await fetch(`/api/ai/${station_id}?language_id=en`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!res.ok) {
+        console.error("AI recommendations fetch failed:", res.status);
+        return;
+      }
+
+      const json = await res.json();
+      console.log("🤖 AI Recommendations received:", json);
+      setAiRecommendations(json);
+    } catch (err) {
+      console.error("Failed to fetch AI recommendations:", err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!stationId.trim()) {
@@ -57,8 +87,8 @@ export default function AnalyticsPage() {
 
     setLoading(true);
     setError(null);
-    setHasSearched(true);
     setShowSuggestions(false);
+    setAiRecommendations(null);
 
     try {
       const res = await fetch(`/api/analytics/station/${encodeURIComponent(stationId.trim())}`);
@@ -72,6 +102,7 @@ export default function AnalyticsPage() {
       }
 
       setData(json.station);
+      fetchAIRecommendations(stationId.trim());
 
       const payload = {
         weathered_zone_depth: json.station.weathered_zone_depth,
@@ -91,22 +122,12 @@ export default function AnalyticsPage() {
         current_nov: json.station.current_nov,
       };
 
-      console.log("📤 Sending payload to ML model:", payload);
-      console.log("🔍 Station data received:", json.station);
-
       const pred = await fetch("/api/future_condition", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const predJson = await pred.json();
-      
-      // Debug: Log the API response
-      console.log("🔍 FULL Prediction API Response:", JSON.stringify(predJson, null, 2));
-      console.log("🔍 Response keys:", Object.keys(predJson));
-      console.log("Has predictions_2024?", predJson.predictions_2024);
-      console.log("Has direct jan?", predJson.jan);
-      
       setPrediction(predJson);
     } catch (err) {
       setError("Failed to fetch data. Please try again.");
@@ -146,7 +167,7 @@ export default function AnalyticsPage() {
 
         {/* SEARCH */}
         <div className="max-w-2xl mx-auto mb-16">
-          <form onSubmit={handleSearch} className="bg-white rounded-3xl shadow-2xl p-8">
+          <div className="bg-white rounded-3xl shadow-2xl p-8">
             <div className="flex gap-4">
               <div className="flex-1 relative">
                 <label htmlFor="stationId" className="block text-lg font-semibold text-gray-700 mb-3">
@@ -158,7 +179,8 @@ export default function AnalyticsPage() {
                   value={stationId}
                   onChange={(e) => setStationId(e.target.value)}
                   onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                  placeholder="e.g., STN001, MUMBAI-01"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch(e)}
+                  placeholder="e.g., STN001, RJ_TONK_MALPURA_001"
                   className="w-full px-6 py-4 text-xl border-2 border-gray-300 rounded-2xl focus:outline-none focus:border-teal-500 transition"
                   autoComplete="off"
                 />
@@ -184,7 +206,7 @@ export default function AnalyticsPage() {
                 )}
               </div>
               <button
-                type="submit"
+                onClick={handleSearch}
                 disabled={loading}
                 className="mt-auto px-8 py-4 bg-teal-600 text-white rounded-2xl font-bold text-xl hover:bg-teal-700 disabled:bg-gray-400 transition flex items-center gap-3"
               >
@@ -192,7 +214,7 @@ export default function AnalyticsPage() {
                 {loading ? "Searching..." : "Search"}
               </button>
             </div>
-          </form>
+          </div>
 
           {error && (
             <div className="mt-6 bg-red-100 border-2 border-red-400 text-red-700 px-6 py-4 rounded-2xl text-center text-lg">
@@ -212,8 +234,113 @@ export default function AnalyticsPage() {
         {/* MAIN CONTENT */}
         {data && prediction && (
           <>
-            <div className="grid lg:grid-cols-2 gap-12 mb-16">
+            {/* AI PERSONALIZATION STATUS BANNER */}
+            <div className="mb-8">
+              {aiLoading && (
+                <div className="bg-gradient-to-r from-indigo-100 to-purple-100 rounded-2xl shadow-lg p-6 flex items-center gap-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-4 border-indigo-600"></div>
+                  <div>
+                    <p className="text-lg font-bold text-indigo-900">Generating AI Personalization...</p>
+                    <p className="text-sm text-indigo-700">Analyzing your profile and station conditions</p>
+                  </div>
+                </div>
+              )}
+              
+              {!aiLoading && !aiRecommendations && (
+                <div className="bg-yellow-100 rounded-2xl shadow-lg p-6 flex items-center gap-4">
+                  <AlertCircle className="w-8 h-8 text-yellow-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-lg font-bold text-yellow-900">AI Personalization Unavailable</p>
+                    <p className="text-sm text-yellow-700">Please log in to see personalized recommendations</p>
+                  </div>
+                </div>
+              )}
+              
+              {!aiLoading && aiRecommendations?.personalization_reasoning && (
+                <div className="bg-green-100 rounded-2xl shadow-lg p-6 flex items-center gap-4">
+                  <CheckCircle className="w-8 h-8 text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-lg font-bold text-green-900">AI Personalization Active ✓</p>
+                    <p className="text-sm text-green-700">Recommendations tailored to your profile and local conditions</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
+            {/* AI PERSONALIZATION REASONING - PROMINENTLY DISPLAYED */}
+            {aiRecommendations?.personalization_reasoning && (
+              <div className="mb-16 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-3xl shadow-2xl p-10 border-4 border-indigo-300">
+                <div className="flex items-center justify-center gap-4 mb-8">
+                  <Brain className="w-12 h-12 text-indigo-600" />
+                  <h2 className="text-4xl font-bold text-indigo-900">AI Personalization Insights</h2>
+                </div>
+                
+                <div className="grid md:grid-cols-2 gap-8">
+                  {/* Role-Based Justification */}
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Target className="w-8 h-8 text-indigo-600" />
+                      <h3 className="text-2xl font-bold text-indigo-900">Why These Recommendations?</h3>
+                    </div>
+                    <p className="text-lg text-gray-700 leading-relaxed">
+                      {aiRecommendations.personalization_reasoning.role_based_justification}
+                    </p>
+                  </div>
+
+                  {/* Profile-Based Customization */}
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Users className="w-8 h-8 text-purple-600" />
+                      <h3 className="text-2xl font-bold text-purple-900">Tailored to Your Profile</h3>
+                    </div>
+                    <p className="text-lg text-gray-700 leading-relaxed">
+                      {aiRecommendations.personalization_reasoning.profile_based_customization}
+                    </p>
+                  </div>
+
+                  {/* Station Conditions Impact */}
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Droplets className="w-8 h-8 text-teal-600" />
+                      <h3 className="text-2xl font-bold text-teal-900">Based on Local Conditions</h3>
+                    </div>
+                    <p className="text-lg text-gray-700 leading-relaxed">
+                      {aiRecommendations.personalization_reasoning.station_conditions_impact}
+                    </p>
+                  </div>
+
+                  {/* Comparison to Generic */}
+                  <div className="bg-white rounded-2xl p-6 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Lightbulb className="w-8 h-8 text-yellow-600" />
+                      <h3 className="text-2xl font-bold text-yellow-900">What Makes This Special?</h3>
+                    </div>
+                    <p className="text-lg text-gray-700 leading-relaxed">
+                      {aiRecommendations.personalization_reasoning.comparison_to_generic}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Key Personalization Factors */}
+                {aiRecommendations.personalization_reasoning.key_personalization_factors && (
+                  <div className="mt-8 bg-white rounded-2xl p-6 shadow-lg">
+                    <h3 className="text-2xl font-bold text-indigo-900 mb-4">Key Personalization Factors</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {aiRecommendations.personalization_reasoning.key_personalization_factors.map((factor, idx) => (
+                        <div key={idx} className="flex items-start gap-3">
+                          <div className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                            {idx + 1}
+                          </div>
+                          <p className="text-lg text-gray-700 pt-1">{factor}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-2 gap-12 mb-16">
               {/* CURRENT STATUS */}
               <div className="bg-white rounded-3xl shadow-2xl p-12">
                 <h2 className="text-4xl font-bold mb-10 text-center">Current Water Level</h2>
@@ -262,11 +389,8 @@ export default function AnalyticsPage() {
               <div className="bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl shadow-2xl p-12">
                 <h2 className="text-4xl font-bold text-purple-800 mb-10 text-center">2024 Forecast</h2>
                 {(() => {
-                  // Parse the string values from API - handle both formats
                   const rawAprMay = prediction.predictions_2024?.apr_may ?? prediction.apr_may;
                   const predAprMay = parseFloat(rawAprMay) || 0;
-                  console.log("Parsed Apr-May value:", predAprMay, "from", rawAprMay);
-                  
                   const forecastStatus = getStatusInfo(predAprMay);
                   return (
                     <>
@@ -282,78 +406,6 @@ export default function AnalyticsPage() {
                     </>
                   );
                 })()}
-
-                {/* Predicted Levels */}
-                <div className="grid grid-cols-4 gap-4 mb-8">
-                  {[
-                    { key: "jan", label: "JAN" },
-                    { key: "apr_may", label: "APR-MAY" },
-                    { key: "aug", label: "AUG" },
-                    { key: "nov", label: "NOV" }
-                  ].map(({ key, label }) => {
-                    // Handle both direct properties and nested predictions_2024
-                    const rawValue = prediction.predictions_2024?.[key] ?? prediction[key];
-                    const value = parseFloat(rawValue);
-                    
-                    console.log(`${key}:`, rawValue, "->", value);
-                    
-                    return (
-                      <div
-                        key={key}
-                        className={`p-6 rounded-2xl ${key === "apr_may" ? "bg-purple-800 text-white" : "bg-white"} shadow-xl`}
-                      >
-                        <p className="text-sm font-medium text-center">{label}</p>
-                        <p className="text-3xl font-black mt-2 text-center">
-                          {!isNaN(value) && value > 0 ? value.toFixed(1) : "—"} m
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* RECHARGE RATES */}
-                <div className="bg-white/90 rounded-3xl p-6">
-                  <h3 className="text-xl font-bold text-purple-800 mb-4 text-center">
-                    Recharge Rate vs Previous Season
-                  </h3>
-                  <div className="grid grid-cols-4 gap-4">
-                    {[
-                      { key: "jan", label: "JAN" },
-                      { key: "apr_may", label: "APR-MAY" },
-                      { key: "aug", label: "AUG" },
-                      { key: "nov", label: "NOV" }
-                    ].map(({ key, label }) => {
-                      const r = prediction.recharge_rates?.[key];
-                      if (!r) {
-                        return (
-                          <div key={key} className="text-center">
-                            <p className="text-xs font-medium text-gray-600 mb-2">{label}</p>
-                            <span className="text-gray-400 text-xl">—</span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={key} className="text-center">
-                          <p className="text-xs font-medium text-gray-600 mb-2">{label}</p>
-                          <div
-                            className={`mt-1 text-2xl font-bold flex items-center justify-center gap-1 ${
-                              r.isRecovery ? "text-green-600" : "text-red-600"
-                            }`}
-                          >
-                            {r.percentage}%
-                            {r.isRecovery ? 
-                              <TrendingUp className="w-5 h-5" /> : 
-                              <TrendingDown className="w-5 h-5" />
-                            }
-                          </div>
-                          <p className="text-xs text-gray-600 mt-1">
-                            {r.isRecovery ? "Recovery" : "Decline"}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -385,9 +437,6 @@ export default function AnalyticsPage() {
                     );
                   })}
                 </div>
-                <p className="text-center mt-8 text-lg opacity-90">
-                  Source: ECMWF SEAS5 Seasonal Forecast • Updated monthly
-                </p>
               </div>
             )}
 
@@ -404,8 +453,6 @@ export default function AnalyticsPage() {
                     <p><strong>Fractured Zone:</strong> {data.fractured_zone_depth ?? "—"} m</p>
                     <p><strong>Storativity:</strong> {data.storativity ?? "—"}</p>
                     <p><strong>Transmissivity:</strong> {data.transmissivity ?? "—"} m²/day</p>
-                    <p><strong>Infiltration Rate:</strong> {data.infiltration_rate ?? "—"}%</p>
-                    <p><strong>Storage Capacity:</strong> {data.storage_capacity ? `${(data.storage_capacity / 1e6).toFixed(1)}M m³` : "—"}</p>
                   </div>
                 </div>
                 <div>
@@ -415,11 +462,10 @@ export default function AnalyticsPage() {
                     <p><strong>Avg Depth:</strong> {data.avg_well_depth ?? "—"} m</p>
                     <p><strong>Handpumps:</strong> {data.handpump_count ?? "—"}</p>
                     <p><strong>Open Wells:</strong> {data.open_well_count ?? "—"}</p>
-                    <p><strong>Daily Extraction:</strong> {data.extraction_rate ? `${data.extraction_rate.toFixed(0)} m³/day` : "—"}</p>
                   </div>
                 </div>
                 <div>
-                  <h3 className="font-bold text-blue-700 mb-4 text-xl">Current Levels (Latest)</h3>
+                  <h3 className="font-bold text-blue-700 mb-4 text-xl">Current Levels</h3>
                   <div className="space-y-3">
                     <p><strong>Jan:</strong> {data.current_jan ?? "—"} m</p>
                     <p><strong>Apr–May:</strong> {data.current_apr_may ?? "—"} m</p>
@@ -433,12 +479,12 @@ export default function AnalyticsPage() {
         )}
 
         <div className="text-center mt-16">
-          <Link
+          <a
             href="/"
-            className="inline-block px-16 py-6 bg-white rounded-3xl shadow-2xl text-3xl font-bold hover:shadow-3xl transition hover:scale-105"
+            className="inline-block px-16 py-6 bg-white rounded-3xl shadow-2xl text-3xl font-bold hover:shadow-3xl transition hover:scale-105 cursor-pointer"
           >
             ← Back to Home
-          </Link>
+          </a>
         </div>
       </div>
     </div>
