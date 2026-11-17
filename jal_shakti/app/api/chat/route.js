@@ -302,7 +302,7 @@ export async function POST(req) {
       const lang = LANGUAGE_MAP[session.languageId] || "English";
 
       const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         messages: [
           {
             role: "system",
@@ -432,7 +432,7 @@ Give practical advice about groundwater, water conservation, irrigation, and far
       console.log("FULL CONTEXT LOADED:", session.fullContext.station_id);
 
       const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         messages: [
           {
             role: "system",
